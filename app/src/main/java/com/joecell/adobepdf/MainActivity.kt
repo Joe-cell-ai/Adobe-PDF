@@ -79,6 +79,23 @@ private fun PdfHome() {
     var showProtectDialog by remember { mutableStateOf(false) }
     var userPassword by remember { mutableStateOf("") }
     var ownerPassword by remember { mutableStateOf("") }
+
+    var showPositionDialog by remember { mutableStateOf(false) }
+    var positionX by remember { mutableStateOf("10") }
+    var positionY by remember { mutableStateOf("15") }
+    var positionPage by remember { mutableStateOf("1") }
+    var positionFontSize by remember { mutableStateOf("16") }
+    var showRedactDialog by remember { mutableStateOf(false) }
+    var redactLeft by remember { mutableStateOf("25") }
+    var redactTop by remember { mutableStateOf("25") }
+    var redactWidth by remember { mutableStateOf("35") }
+    var redactHeight by remember { mutableStateOf("12") }
+    var redactPage by remember { mutableStateOf("1") }
+    var showFormDialog by remember { mutableStateOf(false) }
+    var formFieldNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    var formFieldName by remember { mutableStateOf("") }
+    var formFieldValue by remember { mutableStateOf("") }
+
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
     val rotations = remember { mutableStateMapOf<Int, Int>() }
@@ -248,6 +265,23 @@ private fun PdfHome() {
                         OutlinedButton(enabled = !busy, onClick = { showNoteDialog = true }) { Icon(Icons.Default.Comment, null); Text("Note") }
                         OutlinedButton(enabled = !busy, onClick = { showLinkDialog = true }) { Icon(Icons.Default.Link, null); Text("Link") }
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Creating searchable PDF") { engine.createSearchablePdf(uri) } }) { Icon(Icons.Default.Search, null); Text("OCR") }
+
+                        OutlinedButton(enabled = !busy, onClick = { showPositionDialog = true }) { Icon(Icons.Default.OpenWith, null); Text("Position text") }
+                        OutlinedButton(enabled = !busy, onClick = { showRedactDialog = true }) { Icon(Icons.Default.Block, null); Text("Redact") }
+                        OutlinedButton(enabled = !busy, onClick = {
+                            scope.launch {
+                                busy = true
+                                try {
+                                    formFieldNames = withContext(Dispatchers.IO) { engine.listFormFields(uri) }
+                                    formFieldName = formFieldNames.firstOrNull().orEmpty()
+                                    formFieldValue = ""
+                                    showFormDialog = true
+                                    if (formFieldNames.isEmpty()) message = "This PDF does not contain editable AcroForm fields."
+                                } catch (e: Exception) { message = e.message ?: "Could not inspect form fields." }
+                                finally { busy = false }
+                            }
+                        }) { Icon(Icons.Default.EditNote, null); Text("Fill form") }
+
                     }
                     LazyColumn(Modifier.weight(1f).fillMaxWidth().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed((0 until pageCount).toList()) { index, _ ->
@@ -387,6 +421,85 @@ private fun PdfHome() {
         } },
         confirmButton = { TextButton(onClick = { showProtectDialog = false; selected.firstOrNull()?.let { uri -> runOperation("Protecting PDF") { engine.protectPdf(uri, userPassword, ownerPassword) } } }) { Text("Protect") } },
         dismissButton = { TextButton(onClick = { showProtectDialog = false }) { Text("Cancel") } }
+    )
+
+
+    if (showPositionDialog) AlertDialog(
+        onDismissRequest = { showPositionDialog = false },
+        title = { Text("Position text on a page") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = textToAdd, onValueChange = { textToAdd = it }, label = { Text("Text") })
+            OutlinedTextField(value = positionPage, onValueChange = { positionPage = it }, label = { Text("Page number") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = positionX, onValueChange = { positionX = it }, label = { Text("X %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = positionY, onValueChange = { positionY = it }, label = { Text("Y %") }, modifier = Modifier.weight(1f))
+            }
+            OutlinedTextField(value = positionFontSize, onValueChange = { positionFontSize = it }, label = { Text("Font size (pt)") }, singleLine = true)
+            Text("Coordinates are percentages measured from the page's top-left corner.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showPositionDialog = false
+            activeUri?.let { uri ->
+                runOperation("Placing text") {
+                    engine.addPositionedText(uri, textToAdd, (positionPage.toIntOrNull() ?: 1) - 1,
+                        (positionX.toFloatOrNull() ?: 10f) / 100f, (positionY.toFloatOrNull() ?: 15f) / 100f,
+                        positionFontSize.toFloatOrNull() ?: 16f)
+                }
+            }
+        }) { Text("Place text") } },
+        dismissButton = { TextButton(onClick = { showPositionDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showRedactDialog) AlertDialog(
+        onDismissRequest = { showRedactDialog = false },
+        title = { Text("Permanently redact a region") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = redactPage, onValueChange = { redactPage = it }, label = { Text("Page number") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = redactLeft, onValueChange = { redactLeft = it }, label = { Text("Left %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = redactTop, onValueChange = { redactTop = it }, label = { Text("Top %") }, modifier = Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = redactWidth, onValueChange = { redactWidth = it }, label = { Text("Width %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = redactHeight, onValueChange = { redactHeight = it }, label = { Text("Height %") }, modifier = Modifier.weight(1f))
+            }
+            Text("Warning: creates a flattened, image-based PDF. The selected page's underlying text and objects are removed, and form fields, links and annotations are not retained.", color = Color(0xFFB3261E), fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showRedactDialog = false
+            activeUri?.let { uri ->
+                runOperation("Applying permanent redaction") {
+                    engine.redactRegion(uri, (redactPage.toIntOrNull() ?: 1) - 1,
+                        (redactLeft.toFloatOrNull() ?: 25f) / 100f, (redactTop.toFloatOrNull() ?: 25f) / 100f,
+                        (redactWidth.toFloatOrNull() ?: 35f) / 100f, (redactHeight.toFloatOrNull() ?: 12f) / 100f)
+                }
+            }
+        }) { Text("Redact permanently") } },
+        dismissButton = { TextButton(onClick = { showRedactDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showFormDialog) AlertDialog(
+        onDismissRequest = { showFormDialog = false },
+        title = { Text("Fill PDF form") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (formFieldNames.isNotEmpty()) {
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    OutlinedTextField(value = formFieldName, onValueChange = {}, readOnly = true, label = { Text("Form field") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth())
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        formFieldNames.forEach { name -> DropdownMenuItem(text = { Text(name) }, onClick = { formFieldName = name; expanded = false }) }
+                    }
+                }
+                OutlinedTextField(value = formFieldValue, onValueChange = { formFieldValue = it }, label = { Text("Value") })
+            } else Text("No editable AcroForm fields were found in this document.")
+        } },
+        confirmButton = { TextButton(enabled = formFieldName.isNotBlank() && formFieldValue.isNotEmpty(), onClick = {
+            showFormDialog = false
+            activeUri?.let { uri -> runOperation("Filling PDF form") { engine.fillFormField(uri, formFieldName, formFieldValue) } }
+        }) { Text("Apply value") } },
+        dismissButton = { TextButton(onClick = { showFormDialog = false }) { Text("Close") } }
     )
 
     if (showSignatureDialog) AlertDialog(
