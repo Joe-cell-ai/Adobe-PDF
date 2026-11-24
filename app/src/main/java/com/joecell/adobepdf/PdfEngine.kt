@@ -198,7 +198,7 @@ class PdfEngine(private val context: Context) {
                             val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
                             try {
                                 bitmap.eraseColor(android.graphics.Color.WHITE)
-                                renderedPage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_OCR)
+                                renderedPage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                                 val recognized = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)))
                                 val pdfPage = document.getPage(pageIndex)
                                 val scaleX = pdfPage.mediaBox.width / bitmap.width.toFloat()
