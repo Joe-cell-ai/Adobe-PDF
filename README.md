@@ -53,3 +53,15 @@ The redaction workflow intentionally flattens the output to prevent recovery of 
 
 - Handwritten signature drawing pad with vector stroke output
 - Selected launcher icon concept B applied as an adaptive purple/cyan icon, with a legacy fallback for older Android versions
+
+
+## Editor placement, safety and verification
+
+- Text and images can be positioned with a page-relative drag control; image width can be adjusted as a percentage of page width.
+- Typed and drawn signatures, sticky notes and web links support choosing a target page.
+- Permanent redaction flattens every page and paints the selected region into the page image. It deliberately removes the original text/vector layer, annotations, links, form fields and document metadata from the output. Always inspect the result before sharing; keep the untouched source.
+- PDF link URLs are restricted to HTTP and HTTPS. Page indices and normalized redaction/placement coordinates are validated.
+- CI runs JVM unit tests for page bounds, normalized coordinates, redaction rectangles and safe link schemes before assembling the debug APK.
+- OCR currently uses the bundled Latin model only to avoid shipping multiple large language models in the APK. Other scripts are not included in this build.
+- OCR coordinates on rotated/nonstandard PDFs and password-protection interoperability still require device-level testing in multiple PDF readers. PDF permission flags are advisory in some readers and should not be treated as DRM.
+- Compression remains a raster-based size-reduction mode; it trades searchable text and vector fidelity for smaller image-based output. Choose the original file when editability matters.
