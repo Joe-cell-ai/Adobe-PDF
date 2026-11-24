@@ -65,6 +65,12 @@ private fun PdfHome() {
     var textToAdd by remember { mutableStateOf("Approved") }
     var pageCount by remember { mutableIntStateOf(0) }
     var showTextDialog by remember { mutableStateOf(false) }
+    var showSignatureDialog by remember { mutableStateOf(false) }
+    var signatureText by remember { mutableStateOf("") }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
+        val documentUri = activeUri
+        if (imageUri != null && documentUri != null) runOperation("Inserting image") { engine.insertImage(documentUri, imageUri, 0) }
+    }
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
     val rotations = remember { mutableStateMapOf<Int, Int>() }
@@ -205,6 +211,12 @@ private fun PdfHome() {
                             TextButton(onClick = { screen = PdfScreen.ORGANIZER }) { Icon(Icons.Default.GridView, null); Spacer(Modifier.width(6.dp)); Text("Organize") }
                         }
                     }
+                    Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
+                        OutlinedButton(enabled = !busy, onClick = { pickImage.launch("image/*") }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
+                        OutlinedButton(enabled = !busy, onClick = { runOperation("Adding highlight") { engine.addHighlight(uri, 0) } }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
+                        OutlinedButton(enabled = !busy, onClick = { showSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Signature") }
+                    }
                     LazyColumn(Modifier.fillMaxSize().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed((0 until pageCount).toList()) { index, _ ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -287,8 +299,18 @@ private fun PdfHome() {
         onDismissRequest = { showTextDialog = false },
         title = { Text("Add text to first page") },
         text = { OutlinedTextField(value = textToAdd, onValueChange = { textToAdd = it }, label = { Text("Text") }) },
-        confirmButton = { TextButton(onClick = { showTextDialog = false; runOperation("Adding text") { engine.addText(selected.first(), textToAdd) } }) { Text("Add text") } },
+        confirmButton = { TextButton(onClick = { showTextDialog = false; runOperation("Adding text") { engine.addTextOverlay(activeUri ?: selected.first(), textToAdd, 0) } }) { Text("Add text") } },
         dismissButton = { TextButton(onClick = { showTextDialog = false }) { Text("Cancel") } }
+    )
+    if (showSignatureDialog) AlertDialog(
+        onDismissRequest = { showSignatureDialog = false },
+        title = { Text("Add typed signature") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = signatureText, onValueChange = { signatureText = it }, label = { Text("Name or signature text") }, singleLine = true)
+            Text("Adds an italic signature near the bottom of page 1.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showSignatureDialog = false; activeUri?.let { uri -> runOperation("Adding signature") { engine.addTypedSignature(uri, signatureText, 0) } } }) { Text("Add signature") } },
+        dismissButton = { TextButton(onClick = { showSignatureDialog = false }) { Text("Cancel") } }
     )
 }
 
