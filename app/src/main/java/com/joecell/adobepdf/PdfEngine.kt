@@ -204,7 +204,7 @@ class PdfEngine(private val context: Context) {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
             require(document.numberOfPages > 0) { "This PDF has no pages." }
-            val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            val descriptor = openPdfFileDescriptor(uri)
                 ?: error("Cannot open PDF for OCR.")
             try {
                 PdfRenderer(descriptor).use { renderer ->
@@ -295,7 +295,7 @@ class PdfEngine(private val context: Context) {
         require(firstPage >= 1 && lastPage >= firstPage) { "Choose a valid page range." }
         require(jpegQuality in 40..95) { "Image quality must be between 40 and 95." }
         require(maxDimension in 800..4000) { "Image size must be between 800 and 4000 pixels." }
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+        val descriptor = openPdfFileDescriptor(uri)
             ?: error("Cannot open PDF for image export.")
         try {
             val output = File(context.cacheDir, "pdf_pages_${System.currentTimeMillis()}.zip")
@@ -341,7 +341,7 @@ class PdfEngine(private val context: Context) {
     fun compressPdf(uri: Uri, jpegQuality: Int = 68): File {
         require(jpegQuality in 35..90) { "Compression quality must be between 35 and 90." }
         val source = openDocument(uri)
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+        val descriptor = openPdfFileDescriptor(uri)
             ?: run { source.close(); error("Cannot open PDF for compression.") }
         val result = PDDocument()
         try {
@@ -516,7 +516,7 @@ class PdfEngine(private val context: Context) {
         require(pageIndex >= 0) { "Page index is invalid." }
         PdfEditorValidation.requireNormalizedRectangle(left, top, width, height)
         val source = openDocument(uri)
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+        val descriptor = openPdfFileDescriptor(uri)
             ?: run { source.close(); error("Cannot open PDF for redaction.") }
         val result = PDDocument()
         try {
@@ -594,7 +594,7 @@ class PdfEngine(private val context: Context) {
     fun removeBlankPages(uri: Uri, darknessThreshold: Int = 245, maxInkRatio: Float = 0.0015f): File {
         require(darknessThreshold in 200..254 && maxInkRatio in 0.0001f..0.05f)
         val source = openDocument(uri)
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+        val descriptor = openPdfFileDescriptor(uri)
             ?: run { source.close(); error("Cannot open PDF for blank-page detection.") }
         val result = PDDocument()
         try {
@@ -659,7 +659,11 @@ class PdfEngine(private val context: Context) {
     /** Decrypt a PDF only when the supplied password is valid and export a separate copy. */
     fun unlockPdf(uri: Uri, password: String): File {
         require(password.isNotEmpty()) { "Enter the PDF password." }
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        val input = if (uri.scheme == "file") {
+            File(uri.path ?: error("Invalid draft PDF path.")).inputStream()
+        } else {
+            context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        }
         val document = input.use { PDDocument.load(it, password) }
         try {
             require(document.isEncrypted) { "This PDF is not password protected." }
@@ -690,12 +694,37 @@ class PdfEngine(private val context: Context) {
     }
 
     fun pageCount(uri: Uri): Int {
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        val input = if (uri.scheme == "file") {
+            File(uri.path ?: error("Invalid draft PDF path.")).inputStream()
+        } else {
+            context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        }
         return input.use { PDDocument.load(it).use { pdf -> pdf.numberOfPages } }
     }
 
+    private fun openPdfFileDescriptor(uri: Uri): android.os.ParcelFileDescriptor? {
+        return if (uri.scheme == "file") {
+            runCatching {
+                android.os.ParcelFileDescriptor.open(
+                    File(uri.path ?: error("Invalid draft PDF path.")),
+                    android.os.ParcelFileDescriptor.MODE_READ_ONLY
+                )
+            }.getOrNull()
+        } else {
+            context.contentResolver.openFileDescriptor(uri, "r")
+        }
+    }
+
     private fun openDocument(uri: Uri): PDDocument {
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        // Edited drafts are kept in the app cache and addressed with file:// URIs.
+        // Supporting them here lets subsequent editing operations consume the
+        // previous operation's output instead of silently restarting from the source.
+        val input = if (uri.scheme == "file") {
+            val path = uri.path ?: error("Invalid draft PDF path.")
+            File(path).inputStream()
+        } else {
+            context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        }
         return input.use { PDDocument.load(it) }
     }
 
