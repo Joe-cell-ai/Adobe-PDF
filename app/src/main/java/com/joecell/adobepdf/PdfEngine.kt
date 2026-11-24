@@ -128,7 +128,11 @@ class PdfEngine(private val context: Context) {
         } finally { document.close() }
     }
 
-    fun insertImage(uri: Uri, imageUri: Uri, pageIndex: Int = 0): File {
+    fun insertImage(
+        uri: Uri, imageUri: Uri, pageIndex: Int = 0,
+        xRatio: Float = 0.29f, yRatio: Float = 0.30f, widthRatio: Float = 0.42f
+    ): File {
+        require(xRatio in 0f..1f && yRatio in 0f..1f && widthRatio in 0.02f..1f) { "Image position or size is invalid." }
         val document = openDocument(uri)
         try {
             require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
@@ -137,11 +141,13 @@ class PdfEngine(private val context: Context) {
             try {
                 val image = LosslessFactory.createFromImage(document, bitmap)
                 val page = document.getPage(pageIndex)
-                val scale = minOf(page.mediaBox.width * 0.42f / image.width, page.mediaBox.height * 0.32f / image.height, 1f)
-                val width = image.width * scale
-                val height = image.height * scale
+                val box = page.mediaBox
+                val width = box.width * widthRatio
+                val height = minOf(box.height * 0.8f, width * image.height / image.width)
+                val x = (box.width * xRatio).coerceIn(0f, box.width - width)
+                val yTop = (box.height * yRatio).coerceIn(0f, box.height - height)
                 PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use {
-                    it.drawImage(image, (page.mediaBox.width - width) / 2f, (page.mediaBox.height - height) / 2f, width, height)
+                    it.drawImage(image, x, box.height - yTop - height, width, height)
                 }
             } finally { bitmap.recycle() }
             return saveEdited(document, "image")
