@@ -74,6 +74,8 @@ private fun PdfHome() {
     var signatureText by remember { mutableStateOf("") }
     var signaturePage by remember { mutableStateOf("1") }
     var notePage by remember { mutableStateOf("1") }
+    var highlightPage by remember { mutableStateOf("1") }
+    var showHighlightDialog by remember { mutableStateOf(false) }
     var linkPage by remember { mutableStateOf("1") }
     var imagePage by remember { mutableStateOf("1") }
     var imageX by remember { mutableStateOf("29") }
@@ -279,7 +281,7 @@ private fun PdfHome() {
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
                         OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
-                        OutlinedButton(enabled = !busy, onClick = { runOperation("Adding highlight") { engine.addHighlight(uri, 0) } }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
+                        OutlinedButton(enabled = !busy, onClick = { showHighlightDialog = true }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
                         OutlinedButton(enabled = !busy, onClick = { showSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Signature") }
                         OutlinedButton(enabled = !busy, onClick = { showNoteDialog = true }) { Icon(Icons.Default.Comment, null); Text("Note") }
                         OutlinedButton(enabled = !busy, onClick = { showLinkDialog = true }) { Icon(Icons.Default.Link, null); Text("Link") }
@@ -397,6 +399,17 @@ private fun PdfHome() {
         text = { OutlinedTextField(value = textToAdd, onValueChange = { textToAdd = it }, label = { Text("Text") }) },
         confirmButton = { TextButton(onClick = { showTextDialog = false; runOperation("Adding text") { engine.addTextOverlay(activeUri ?: selected.first(), textToAdd, 0) } }) { Text("Add text") } },
         dismissButton = { TextButton(onClick = { showTextDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showHighlightDialog) AlertDialog(
+        onDismissRequest = { showHighlightDialog = false },
+        title = { Text("Add highlight") },
+        text = { OutlinedTextField(value = highlightPage, onValueChange = { highlightPage = it }, label = { Text("Page number") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = {
+            showHighlightDialog = false
+            activeUri?.let { uri -> runOperation("Adding highlight") { engine.addHighlight(uri, (highlightPage.toIntOrNull() ?: 1) - 1) } }
+        }) { Text("Add highlight") } },
+        dismissButton = { TextButton(onClick = { showHighlightDialog = false }) { Text("Cancel") } }
     )
 
     if (showNoteDialog) AlertDialog(
