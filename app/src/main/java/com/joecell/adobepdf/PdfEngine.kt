@@ -695,7 +695,15 @@ class PdfEngine(private val context: Context) {
     }
 
     private fun openDocument(uri: Uri): PDDocument {
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        // Edited drafts are kept in the app cache and addressed with file:// URIs.
+        // Supporting them here lets subsequent editing operations consume the
+        // previous operation's output instead of silently restarting from the source.
+        val input = if (uri.scheme == "file") {
+            val path = uri.path ?: error("Invalid draft PDF path.")
+            File(path).inputStream()
+        } else {
+            context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        }
         return input.use { PDDocument.load(it) }
     }
 
