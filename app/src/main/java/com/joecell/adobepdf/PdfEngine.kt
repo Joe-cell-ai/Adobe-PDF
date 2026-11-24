@@ -528,12 +528,6 @@ class PdfEngine(private val context: Context) {
         return input.use { PDDocument.load(it).use { pdf -> pdf.numberOfPages } }
     }
 
-    private fun saveEdited(document: PDDocument, prefix: String): File {
-        val output = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.pdf")
-        document.save(output)
-        return output
-    }
-
     private fun openDocument(uri: Uri): PDDocument {
         val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
         return input.use { PDDocument.load(it) }
