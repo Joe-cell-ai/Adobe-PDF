@@ -218,12 +218,22 @@ private fun PdfHome() {
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Adding highlight") { engine.addHighlight(uri, 0) } }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
                         OutlinedButton(enabled = !busy, onClick = { showSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Signature") }
                     }
-                    LazyColumn(Modifier.fillMaxSize().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed((0 until pageCount).toList()) { index, _ ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 PdfPagePreview(uri, index, 1400, Modifier.fillMaxWidth())
                                 Text("Page ${index + 1}", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
                             }
+                        }
+                    }
+                    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Editor result", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text(message, color = Color.Gray, fontSize = 11.sp, maxLines = 2)
+                            }
+                            if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                            if (output != null) TextButton(onClick = { saveFile.launch(output!!.name) }) { Icon(Icons.Default.SaveAlt, null); Text("Save") }
                         }
                     }
                 }
