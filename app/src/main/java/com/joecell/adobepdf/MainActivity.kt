@@ -488,6 +488,11 @@ private fun PdfHome() {
         onDismissRequest = { showImagePlacementDialog = false },
         title = { Text("Place image on PDF") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            PositionPicker(
+                x = (imageX.toFloatOrNull() ?: 29f) / 100f,
+                y = (imageY.toFloatOrNull() ?: 30f) / 100f,
+                onPositionChange = { x, y -> imageX = (x * 100).toInt().toString(); imageY = (y * 100).toInt().toString() }
+            )
             OutlinedTextField(value = imagePage, onValueChange = { imagePage = it }, label = { Text("Page number") }, singleLine = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = imageX, onValueChange = { imageX = it }, label = { Text("Left %") }, modifier = Modifier.weight(1f))
@@ -505,6 +510,11 @@ private fun PdfHome() {
         title = { Text("Position text on a page") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             OutlinedTextField(value = textToAdd, onValueChange = { textToAdd = it }, label = { Text("Text") })
+            PositionPicker(
+                x = (positionX.toFloatOrNull() ?: 10f) / 100f,
+                y = (positionY.toFloatOrNull() ?: 15f) / 100f,
+                onPositionChange = { x, y -> positionX = (x * 100).toInt().toString(); positionY = (y * 100).toInt().toString() }
+            )
             OutlinedTextField(value = positionPage, onValueChange = { positionPage = it }, label = { Text("Page number") }, singleLine = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = positionX, onValueChange = { positionX = it }, label = { Text("X %") }, modifier = Modifier.weight(1f))
@@ -583,11 +593,40 @@ private fun PdfHome() {
         title = { Text("Add typed signature") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value = signatureText, onValueChange = { signatureText = it }, label = { Text("Name or signature text") }, singleLine = true)
-            Text("Adds an italic signature near the bottom of page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = signaturePage, onValueChange = { signaturePage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Adds an italic signature near the bottom of the selected page.", color = Color.Gray, fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { showSignatureDialog = false; activeUri?.let { uri -> runOperation("Adding signature") { engine.addTypedSignature(uri, signatureText, 0) } } }) { Text("Add signature") } },
+        confirmButton = { TextButton(onClick = { showSignatureDialog = false; activeUri?.let { uri -> runOperation("Adding signature") { engine.addTypedSignature(uri, signatureText, (signaturePage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add signature") } },
         dismissButton = { TextButton(onClick = { showSignatureDialog = false }) { Text("Cancel") } }
     )
+}
+
+@Composable
+private fun PositionPicker(x: Float, y: Float, onPositionChange: (Float, Float) -> Unit) {
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier.fillMaxWidth().height(116.dp)
+            .background(Color(0xFFF1F4FC), RoundedCornerShape(10.dp))
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { point ->
+                        onPositionChange((point.x / size.width).coerceIn(0f, 1f), (point.y / size.height).coerceIn(0f, 1f))
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        onPositionChange((change.position.x / size.width).coerceIn(0f, 1f), (change.position.y / size.height).coerceIn(0f, 1f))
+                    }
+                )
+            }
+    ) {
+        drawRoundRect(color = Color.White, topLeft = androidx.compose.ui.geometry.Offset(size.width * 0.06f, size.height * 0.08f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.88f, size.height * 0.84f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
+        val px = size.width * (0.06f + x.coerceIn(0f, 1f) * 0.88f)
+        val py = size.height * (0.08f + y.coerceIn(0f, 1f) * 0.84f)
+        drawCircle(Accent, radius = 8.dp.toPx(), center = androidx.compose.ui.geometry.Offset(px, py))
+        drawLine(Accent.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(px - 14.dp.toPx(), py), androidx.compose.ui.geometry.Offset(px + 14.dp.toPx(), py), strokeWidth = 1.dp.toPx())
+        drawLine(Accent.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(px, py - 14.dp.toPx()), androidx.compose.ui.geometry.Offset(px, py + 14.dp.toPx()), strokeWidth = 1.dp.toPx())
+    }
+    Text("Drag the marker to position. Set image width below to resize.", color = Color.Gray, fontSize = 11.sp)
 }
 
 @Composable
