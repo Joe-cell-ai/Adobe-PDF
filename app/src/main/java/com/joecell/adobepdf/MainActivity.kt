@@ -61,6 +61,8 @@ private fun PdfHome() {
     val scope = rememberCoroutineScope()
     var selected by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var activeUri by remember { mutableStateOf<Uri?>(null) }
+    val editHistory = remember { PdfEditHistory(maxEntries = 30) }
+    var historyRevision by remember { mutableIntStateOf(0) }
     var screen by remember { mutableStateOf(PdfScreen.HOME) }
     var message by remember { mutableStateOf("Your documents stay on this device during processing.") }
     var busy by remember { mutableStateOf(false) }
