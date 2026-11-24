@@ -743,29 +743,6 @@ class PdfEngine(private val context: Context) {
         } finally { document.close() }
     }
 
-    /** Fill an AcroForm field with a type-aware value and refresh its appearance stream. */
-    fun fillFormField(uri: Uri, fieldName: String, value: String): File {
-        require(fieldName.isNotBlank()) { "Choose a form field." }
-        val document = openDocument(uri)
-        try {
-            val form = document.documentCatalog.acroForm ?: error("This PDF has no AcroForm fields.")
-            val field = form.getField(fieldName) ?: error("Form field not found: $fieldName")
-            require(!field.isReadOnly) { "This form field is read-only." }
-            when (field.fieldType) {
-                "Btn" -> {
-                    val normalized = value.trim()
-                    if (normalized.equals("true", true) || normalized.equals("yes", true) || normalized == "1") {
-                        val onValue = field.widgets.firstOrNull()?.appearance?.normalAppearance?.entryNames?.firstOrNull { it != "Off" }
-                        field.value = onValue ?: "Yes"
-                    } else field.value = "Off"
-                }
-                else -> field.setValue(value)
-            }
-            form.refreshAppearances()
-            return saveEdited(document, "form_filled")
-        } finally { document.close() }
-    }
-
     /** List annotations and their page-space rectangles for selection/editing tools. */
     fun listPageAnnotations(uri: Uri, pageIndex: Int): List<PdfAnnotationInfo> {
         val document = openDocument(uri)
