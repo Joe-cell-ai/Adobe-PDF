@@ -65,3 +65,10 @@ The redaction workflow intentionally flattens the output to prevent recovery of 
 - OCR currently uses the bundled Latin model only to avoid shipping multiple large language models in the APK. Other scripts are not included in this build.
 - OCR coordinates on rotated/nonstandard PDFs and password-protection interoperability still require device-level testing in multiple PDF readers. PDF permission flags are advisory in some readers and should not be treated as DRM.
 - Compression remains a raster-based size-reduction mode; it trades searchable text and vector fidelity for smaller image-based output. Choose the original file when editability matters.
+
+
+## APK size controls
+
+- Debug APKs are split by ABI (arm64-v8a, armeabi-v7a and x86_64) so a device downloads only its native build rather than a universal APK.
+- Release builds enable code shrinking and resource shrinking.
+- OCR intentionally includes only the Latin recognition model in this version; extra bundled scripts would increase install size substantially.
