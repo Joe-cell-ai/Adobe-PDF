@@ -34,6 +34,7 @@ import java.io.ByteArrayOutputStream
 /** Capability report for AcroForm/XFA documents. XFA packets are detected and preserved, not interpreted. */
 data class PdfFormFieldInfo(val name: String, val type: String, val value: String, val readOnly: Boolean, val required: Boolean)
 data class PdfFormCapabilities(val hasAcroForm: Boolean, val hasXfaPacket: Boolean, val fields: List<PdfFormFieldInfo>)
+data class PdfAnnotationInfo(val index: Int, val subtype: String, val contents: String, val x: Float, val y: Float, val width: Float, val height: Float, val readOnly: Boolean)
 
 /** Reopen a document and inspect its interactive form fields without mutating it. */
 /** Reopen verification result for a saved PDF draft. */
@@ -742,6 +743,59 @@ class PdfEngine(private val context: Context) {
         } finally { document.close() }
     }
 
+    /** Fill an AcroForm field with a type-aware value and refresh its appearance stream. */
+    fun fillFormField(uri: Uri, fieldName: String, value: String): File {
+        require(fieldName.isNotBlank()) { "Choose a form field." }
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: error("This PDF has no AcroForm fields.")
+            val field = form.getField(fieldName) ?: error("Form field not found: $fieldName")
+            require(!field.isReadOnly) { "This form field is read-only." }
+            when (field.fieldType) {
+                "Btn" -> {
+                    val normalized = value.trim()
+                    if (normalized.equals("true", true) || normalized.equals("yes", true) || normalized == "1") {
+                        val onValue = field.widgets.firstOrNull()?.appearance?.normalAppearance?.entryNames?.firstOrNull { it != "Off" }
+                        field.value = onValue ?: "Yes"
+                    } else field.value = "Off"
+                }
+                else -> field.setValue(value)
+            }
+            form.refreshAppearances()
+            return saveEdited(document, "form_filled")
+        } finally { document.close() }
+    }
+
+    /** List annotations and their page-space rectangles for selection/editing tools. */
+    fun listPageAnnotations(uri: Uri, pageIndex: Int): List<PdfAnnotationInfo> {
+        val document = openDocument(uri)
+        try {
+            PdfEditorValidation.requirePageIndex(pageIndex, document.numberOfPages)
+            return document.getPage(pageIndex).annotations.mapIndexed { index, annotation ->
+                val rect = annotation.rectangle
+                PdfAnnotationInfo(index, annotation.subtype ?: "Unknown", annotation.contents ?: "",
+                    rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height, annotation.isReadOnly)
+            }
+        } finally { document.close() }
+    }
+
+    /** Move or resize an existing annotation in PDF points; content objects are not flattened. */
+    fun transformAnnotation(uri: Uri, pageIndex: Int, annotationIndex: Int, x: Float, y: Float, width: Float, height: Float): File {
+        require(listOf(x, y, width, height).all { it.isFinite() }) { "Invalid annotation geometry." }
+        require(width > 0f && height > 0f) { "Annotation size must be positive." }
+        val document = openDocument(uri)
+        try {
+            PdfEditorValidation.requirePageIndex(pageIndex, document.numberOfPages)
+            val page = document.getPage(pageIndex)
+            val annotation = page.annotations.getOrNull(annotationIndex) ?: error("Annotation not found.")
+            require(!annotation.isReadOnly) { "This annotation is read-only." }
+            require(x >= 0f && y >= 0f && x + width <= page.mediaBox.width && y + height <= page.mediaBox.height) {
+                "Annotation must remain inside the page bounds."
+            }
+            annotation.rectangle = PDRectangle(x, y, width, height)
+            return saveEdited(document, "annotation_edit")
+        } finally { document.close() }
+    }
     fun pageCount(uri: Uri): Int {
         val input = if (uri.scheme == "file") {
             File(uri.path ?: error("Invalid draft PDF path.")).inputStream()
