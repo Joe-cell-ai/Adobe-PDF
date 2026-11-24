@@ -100,6 +100,13 @@ private fun PdfHome() {
     var showProtectDialog by remember { mutableStateOf(false) }
     var userPassword by remember { mutableStateOf("") }
     var ownerPassword by remember { mutableStateOf("") }
+    var showCropDialog by remember { mutableStateOf(false) }
+    var cropLeft by remember { mutableStateOf("5") }
+    var cropTop by remember { mutableStateOf("5") }
+    var cropRight by remember { mutableStateOf("95") }
+    var cropBottom by remember { mutableStateOf("95") }
+    var showUnlockDialog by remember { mutableStateOf(false) }
+    var unlockPassword by remember { mutableStateOf("") }
 
     var showPositionDialog by remember { mutableStateOf(false) }
     var positionX by remember { mutableStateOf("10") }
@@ -263,6 +270,17 @@ private fun PdfHome() {
                 item { ToolCard("Edit PDF metadata", "Set document title, author, subject and keywords", Icons.Default.Info, selected.size != 1 || busy) {
                     showMetadataDialog = true
                 } }
+                item { ToolCard("PDF Multi Tool", "Merge, extract, reorder, duplicate, rotate and delete pages", Icons.Default.Dashboard, selected.size != 1 || busy) {
+                    activeUri = selected.first(); screen = PdfScreen.ORGANIZER
+                } }
+                item { ToolCard("Crop PDF", "Trim page margins with a custom crop rectangle", Icons.Default.Crop, selected.size != 1 || busy) { showCropDialog = true } }
+                item { ToolCard("Remove blank pages", "Detect mostly-white pages on-device and remove them", Icons.Default.AutoDelete, selected.size != 1 || busy) {
+                    runOperation("Removing blank pages") { engine.removeBlankPages(selected.first()) }
+                } }
+                item { ToolCard("Remove metadata", "Clear title, author, dates and embedded XMP metadata", Icons.Default.DeleteSweep, selected.size != 1 || busy) {
+                    runOperation("Removing metadata") { engine.removeMetadata(selected.first()) }
+                } }
+                item { ToolCard("Unlock PDF", "Remove password protection using the correct document password", Icons.Default.LockOpen, selected.size != 1 || busy) { showUnlockDialog = true } }
                 item { ToolCard("Password protect PDF", "Encrypt a PDF with an open password and owner password", Icons.Default.Lock, selected.size != 1 || busy) {
                     showProtectDialog = true
                 } }
@@ -505,6 +523,38 @@ private fun PdfHome() {
         } },
         confirmButton = { TextButton(onClick = { showMetadataDialog = false; selected.firstOrNull()?.let { uri -> runOperation("Updating metadata") { engine.updateMetadata(uri, metadataTitle, metadataAuthor, metadataSubject, metadataKeywords) } } }) { Text("Apply") } },
         dismissButton = { TextButton(onClick = { showMetadataDialog = false }) { Text("Cancel") } }
+    )
+    if (showCropDialog) AlertDialog(
+        onDismissRequest = { showCropDialog = false },
+        title = { Text("Crop PDF pages") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Set the visible page area as percentages. Values apply to every page.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = cropLeft, onValueChange = { cropLeft = it }, label = { Text("Left %") }, singleLine = true)
+            OutlinedTextField(value = cropTop, onValueChange = { cropTop = it }, label = { Text("Top %") }, singleLine = true)
+            OutlinedTextField(value = cropRight, onValueChange = { cropRight = it }, label = { Text("Right %") }, singleLine = true)
+            OutlinedTextField(value = cropBottom, onValueChange = { cropBottom = it }, label = { Text("Bottom %") }, singleLine = true)
+        } },
+        confirmButton = { TextButton(onClick = {
+            val l = cropLeft.toFloatOrNull(); val t = cropTop.toFloatOrNull()
+            val r = cropRight.toFloatOrNull(); val b = cropBottom.toFloatOrNull()
+            if (l == null || t == null || r == null || b == null) message = "Enter valid crop percentages."
+            else { showCropDialog = false; selected.firstOrNull()?.let { uri -> runOperation("Cropping PDF") { engine.cropPages(uri, l / 100f, t / 100f, r / 100f, b / 100f) } } }
+        }) { Text("Crop pages") } },
+        dismissButton = { TextButton(onClick = { showCropDialog = false }) { Text("Cancel") } }
+    )
+    if (showUnlockDialog) AlertDialog(
+        onDismissRequest = { showUnlockDialog = false },
+        title = { Text("Unlock PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = unlockPassword, onValueChange = { unlockPassword = it }, label = { Text("Current PDF password") }, singleLine = true)
+            Text("Requires the correct password. The original file is not changed.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showUnlockDialog = false
+            selected.firstOrNull()?.let { uri -> runOperation("Unlocking PDF") { engine.unlockPdf(uri, unlockPassword) } }
+            unlockPassword = ""
+        }) { Text("Unlock") } },
+        dismissButton = { TextButton(onClick = { showUnlockDialog = false }) { Text("Cancel") } }
     )
     if (showProtectDialog) AlertDialog(
         onDismissRequest = { showProtectDialog = false },
