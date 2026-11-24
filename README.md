@@ -2,26 +2,25 @@
 
 A privacy-first, open-source native Android PDF workspace built from scratch.
 
-## Implemented in the current development branch
+## Implemented on main
 
-- Kotlin + Jetpack Compose Android application
-- Android Storage Access Framework file selection and export
-- Local PDF merge, first-page extraction, page rotation and text overlay
-- On-device PDF reader using Android's `PdfRenderer`
-- Continuous page viewing with pinch-to-zoom
-- Page organizer with page thumbnails and selection
-- Reorder pages, delete selected pages, duplicate selected pages, extract selected pages and rotate selected pages
-- Modified documents are exported as new PDFs; the original source is left untouched
-- No account or cloud upload required for these local operations
+- Native Kotlin + Jetpack Compose Android app
+- Android Storage Access Framework PDF selection and export
+- On-device PDF reader with continuous page rendering and pinch-to-zoom
+- Page organizer with thumbnails, selection, reorder, delete, duplicate, extract and rotate operations
+- Local PDF merge, first-page extraction and rotate-all-pages tools
+- PDF editor overlays: add text, insert an image, add a highlight rectangle and add a typed italic signature
+- Edited files are exported as separate PDFs; the source document is not overwritten
+- No account or cloud upload is required for these local operations
 
 ## Build
 
-Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run the `:app` configuration. GitHub Actions builds a debug APK and publishes it as a workflow artifact when CI passes.
+Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run the `:app` configuration. GitHub Actions builds a debug APK and publishes it as a workflow artifact after CI passes.
 
-## Roadmap
+## Next roadmap
 
-- More complete page navigation and editing controls
-- Text and image placement, annotations, stamps and signatures
+- Free-position editing controls and page-specific editor selection
+- Drawn signatures, richer annotations, stamps and links
 - OCR and searchable PDFs
 - Image/PDF conversions and compression
 - Forms, metadata, document security and redaction
