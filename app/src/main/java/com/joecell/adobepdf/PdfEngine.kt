@@ -4,12 +4,19 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.android.gms.tasks.Tasks
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.util.Matrix
 import java.io.File
 import java.io.FileOutputStream
 
@@ -166,6 +173,65 @@ class PdfEngine(private val context: Context) {
         val output = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.pdf")
         document.save(output)
         return output
+    }
+
+
+    /**
+     * Renders each page locally, recognises Latin text with the bundled ML Kit model,
+     * and adds invisible PDF text positioned over the recognised words.
+     */
+    fun createSearchablePdf(uri: Uri): File {
+        val document = openDocument(uri)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            require(document.numberOfPages > 0) { "This PDF has no pages." }
+            val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+                ?: error("Cannot open PDF for OCR.")
+            try {
+                PdfRenderer(descriptor).use { renderer ->
+                    require(renderer.pageCount == document.numberOfPages) { "PDF page count changed while opening." }
+                    for (pageIndex in 0 until renderer.pageCount) {
+                        renderer.openPage(pageIndex).use { renderedPage ->
+                            val scale = minOf(2.0f, 2400f / maxOf(renderedPage.width, renderedPage.height))
+                            val bitmapWidth = (renderedPage.width * scale).toInt().coerceAtLeast(1)
+                            val bitmapHeight = (renderedPage.height * scale).toInt().coerceAtLeast(1)
+                            val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+                            try {
+                                bitmap.eraseColor(android.graphics.Color.WHITE)
+                                renderedPage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_OCR)
+                                val recognized = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)))
+                                val pdfPage = document.getPage(pageIndex)
+                                val scaleX = pdfPage.mediaBox.width / bitmap.width.toFloat()
+                                val scaleY = pdfPage.mediaBox.height / bitmap.height.toFloat()
+                                PDPageContentStream(document, pdfPage, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                                    recognized.textBlocks.flatMap { it.lines }.forEach { line ->
+                                        val bounds = line.boundingBox ?: return@forEach
+                                        val cleanText = line.text
+                                            .replace(Regex("[^\\u0020-\\u007E]"), "?")
+                                            .take(1000)
+                                        if (cleanText.isNotBlank()) {
+                                            val fontSize = (bounds.height() * scaleY * 0.78f).coerceIn(5f, 36f)
+                                            val x = bounds.left * scaleX
+                                            val y = pdfPage.mediaBox.height - bounds.bottom * scaleY
+                                            stream.beginText()
+                                            stream.setFont(PDType1Font.HELVETICA, fontSize)
+                                            stream.setRenderingMode(PDPageContentStream.RenderingMode.NEITHER)
+                                            stream.setTextMatrix(Matrix.getTranslateInstance(x, y))
+                                            runCatching { stream.showText(cleanText) }
+                                            stream.endText()
+                                        }
+                                    }
+                                }
+                            } finally { bitmap.recycle() }
+                        }
+                    }
+                }
+            } finally { descriptor.close() }
+            return saveEdited(document, "searchable")
+        } finally {
+            recognizer.close()
+            document.close()
+        }
     }
 
     fun pageCount(uri: Uri): Int {
