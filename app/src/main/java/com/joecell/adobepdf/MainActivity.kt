@@ -388,7 +388,8 @@ private fun PdfHome() {
         confirmButton = { TextButton(onClick = { showProtectDialog = false; selected.firstOrNull()?.let { uri -> runOperation("Protecting PDF") { engine.protectPdf(uri, userPassword, ownerPassword) } } }) { Text("Protect") } },
         dismissButton = { TextButton(onClick = { showProtectDialog = false }) { Text("Cancel") } }
     )
-\n    if (showSignatureDialog) AlertDialog(
+
+    if (showSignatureDialog) AlertDialog(
         onDismissRequest = { showSignatureDialog = false },
         title = { Text("Add typed signature") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
