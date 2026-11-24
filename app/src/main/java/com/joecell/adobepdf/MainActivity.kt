@@ -288,7 +288,7 @@ private fun PdfHome() {
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Creating searchable PDF") { engine.createSearchablePdf(uri) } }) { Icon(Icons.Default.Search, null); Text("OCR") }
 
                         OutlinedButton(enabled = !busy, onClick = { showPositionDialog = true }) { Icon(Icons.Default.OpenWith, null); Text("Position text") }
-                        OutlinedButton(enabled = !busy, onClick = { signaturePoints = emptyList(); showDrawnSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Draw signature") }
+                        OutlinedButton(enabled = !busy, onClick = { signatureStrokes = emptyList(); showDrawnSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Draw signature") }
                         OutlinedButton(enabled = !busy, onClick = { showRedactDialog = true }) { Icon(Icons.Default.Block, null); Text("Redact") }
                         OutlinedButton(enabled = !busy, onClick = {
                             scope.launch {
