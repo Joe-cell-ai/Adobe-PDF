@@ -30,6 +30,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
 
+/** Reopen verification result for a saved PDF draft. */
+data class PdfSaveVerification(val byteCount: Long, val pageCount: Int, val formFieldCount: Int, val signatureCount: Int)
+
 /** Local-only PDF operations using Android's Storage Access Framework. */
 class PdfEngine(private val context: Context) {
     init { PDFBoxResourceLoader.init(context) }
@@ -189,9 +192,37 @@ class PdfEngine(private val context: Context) {
     }
 
     private fun saveEdited(document: PDDocument, prefix: String): File {
+        val expectedPages = document.numberOfPages
         val output = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.pdf")
         document.save(output)
+        verifySavedPdf(output, expectedPages)
         return output
+    }
+
+    /** Reopen generated output before allowing it into the chained-edit workflow. */
+    fun verifySavedPdf(file: File, expectedPageCount: Int? = null): PdfSaveVerification {
+        require(file.isFile && file.length() > 0L) { "The saved PDF is missing or empty." }
+        val reopened = PDDocument.load(file)
+        try {
+            val pages = reopened.numberOfPages
+            require(pages > 0) { "The saved PDF contains no pages." }
+            if (expectedPageCount != null) require(pages == expectedPageCount) {
+                "Save verification failed: expected $expectedPageCount pages but reopened $pages."
+            }
+            val fields = reopened.documentCatalog.acroForm?.fields?.size ?: 0
+            val signatures = reopened.signatureDictionaries.size
+            return PdfSaveVerification(file.length(), pages, fields, signatures)
+        } finally { reopened.close() }
+    }
+
+    fun verifySavedUri(uri: Uri, expectedPageCount: Int? = null): PdfSaveVerification {
+        val input = if (uri.scheme == "file") File(uri.path ?: error("Invalid PDF path.")).inputStream()
+            else context.contentResolver.openInputStream(uri) ?: error("Cannot reopen the saved PDF.")
+        val temp = File(context.cacheDir, "verify_${System.nanoTime()}.pdf")
+        try {
+            input.use { source -> FileOutputStream(temp).use { target -> source.copyTo(target) } }
+            return verifySavedPdf(temp, expectedPageCount)
+        } finally { temp.delete() }
     }
 
 
