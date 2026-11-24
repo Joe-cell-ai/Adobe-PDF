@@ -11,8 +11,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -308,11 +308,6 @@ private fun PdfHome() {
                 else Column(Modifier.fillMaxSize().padding(padding)) {
                     var zoom by remember(uri) { mutableFloatStateOf(1f) }
                     var pan by remember(uri) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-                    val zoomState = rememberTransformableState { zoomChange, panChange, _ ->
-                        val nextZoom = (zoom * zoomChange).coerceIn(0.5f, 5f)
-                        zoom = nextZoom
-                        pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero else pan + panChange
-                    }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("$pageCount pages · ${(zoom * 100).toInt()}%", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         IconButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(0.5f); if (zoom <= 1.001f) pan = androidx.compose.ui.geometry.Offset.Zero }, enabled = zoom > 1.001f) { Icon(Icons.Default.Remove, "Zoom out") }
@@ -349,11 +344,28 @@ private fun PdfHome() {
                     }
                     LazyColumn(
                         Modifier.weight(1f).fillMaxWidth()
-                            .transformable(zoomState)
-                            .pointerInput(zoom) {
-                                androidx.compose.foundation.gestures.detectTapGestures(onDoubleTap = {
-                                    zoom = if (zoom > 1.01f) 1f else 2f
-                                    pan = androidx.compose.ui.geometry.Offset.Zero
+                            .pointerInput(Unit) {
+                                detectTransformGestures { centroid, panChange, zoomChange, _ ->
+                                    val previousZoom = zoom
+                                    val nextZoom = (previousZoom * zoomChange).coerceIn(0.5f, 5f)
+                                    val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                                    val focalOffset = centroid - center
+                                    val ratio = nextZoom / previousZoom
+                                    pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero
+                                        else (pan - focalOffset) * ratio + focalOffset + panChange
+                                    zoom = nextZoom
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(onDoubleTap = { tap ->
+                                    val previousZoom = zoom
+                                    val nextZoom = if (previousZoom > 1.01f) 1f else 2f
+                                    val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                                    val focalOffset = tap - center
+                                    val ratio = nextZoom / previousZoom
+                                    pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero
+                                        else (pan - focalOffset) * ratio + focalOffset
+                                    zoom = nextZoom
                                 })
                             }
                             .graphicsLayer {
