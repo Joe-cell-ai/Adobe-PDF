@@ -569,6 +569,105 @@ class PdfEngine(private val context: Context) {
         }
     }
 
+    /** Crop every page to a normalized rectangle measured from the visible top-left. */
+    fun cropPages(uri: Uri, left: Float, top: Float, right: Float, bottom: Float): File {
+        require(left >= 0f && top >= 0f && right <= 1f && bottom <= 1f && right - left >= 0.05f && bottom - top >= 0.05f) {
+            "Crop bounds must form a valid rectangle within the page."
+        }
+        val document = openDocument(uri)
+        try {
+            document.pages.forEach { page ->
+                val media = page.mediaBox
+                val crop = PDRectangle(
+                    media.lowerLeftX + media.width * left,
+                    media.lowerLeftY + media.height * (1f - bottom),
+                    media.width * (right - left),
+                    media.height * (bottom - top)
+                )
+                page.cropBox = crop
+            }
+            return saveEdited(document, "cropped")
+        } finally { document.close() }
+    }
+
+    /** Detect mostly-white pages locally and remove them from a new PDF copy. */
+    fun removeBlankPages(uri: Uri, darknessThreshold: Int = 245, maxInkRatio: Float = 0.0015f): File {
+        require(darknessThreshold in 200..254 && maxInkRatio in 0.0001f..0.05f)
+        val source = openDocument(uri)
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: run { source.close(); error("Cannot open PDF for blank-page detection.") }
+        val result = PDDocument()
+        try {
+            val kept = mutableListOf<Int>()
+            android.graphics.pdf.PdfRenderer(descriptor).use { renderer ->
+                require(renderer.pageCount == source.numberOfPages) { "PDF page count changed while opening." }
+                for (index in 0 until renderer.pageCount) {
+                    renderer.openPage(index).use { page ->
+                        val scale = minOf(1f, 320f / maxOf(page.width, page.height))
+                        val bitmap = Bitmap.createBitmap(
+                            (page.width * scale).toInt().coerceAtLeast(1),
+                            (page.height * scale).toInt().coerceAtLeast(1),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            val pixels = IntArray(bitmap.width * bitmap.height)
+                            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                            val ink = pixels.count { pixel ->
+                                val luminance = (android.graphics.Color.red(pixel) * 299 +
+                                    android.graphics.Color.green(pixel) * 587 +
+                                    android.graphics.Color.blue(pixel) * 114) / 1000
+                                luminance < darknessThreshold
+                            }
+                            val inkRatio = ink.toFloat() / pixels.size.coerceAtLeast(1)
+                            if (inkRatio > maxInkRatio) kept += index
+                        } finally { bitmap.recycle() }
+                    }
+                }
+            }
+            require(kept.isNotEmpty()) { "Every page appears blank; no output was created." }
+            kept.forEach { result.importPage(source.getPage(it)) }
+            return saveEdited(result, "without_blank_pages")
+        } finally {
+            result.close()
+            source.close()
+            descriptor.close()
+        }
+    }
+
+    /** Remove standard document information and embedded XMP metadata. */
+    fun removeMetadata(uri: Uri): File {
+        val document = openDocument(uri)
+        try {
+            document.documentInformation.apply {
+                title = ""
+                author = ""
+                subject = ""
+                keywords = ""
+                creator = ""
+                producer = ""
+                creationDate = null
+                modificationDate = null
+                trapped = null
+            }
+            document.documentCatalog.metadata = null
+            return saveEdited(document, "metadata_removed")
+        } finally { document.close() }
+    }
+
+    /** Decrypt a PDF only when the supplied password is valid and export a separate copy. */
+    fun unlockPdf(uri: Uri, password: String): File {
+        require(password.isNotEmpty()) { "Enter the PDF password." }
+        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        val document = input.use { PDDocument.load(it, password) }
+        try {
+            require(document.isEncrypted) { "This PDF is not password protected." }
+            document.isAllSecurityToBeRemoved = true
+            return saveEdited(document, "unlocked")
+        } finally { document.close() }
+    }
+
     /** Return editable AcroForm field names for the form-fill screen. */
     fun listFormFields(uri: Uri): List<String> {
         val document = openDocument(uri)
