@@ -330,7 +330,6 @@ class PdfEngine(private val context: Context) {
                 contents = note.take(2000)
                 rectangle = PDRectangle(box.width - 52f, box.height - 76f, 28f, 28f)
                 titlePopup = "Note"
-                isOpen = false
             }
             page.annotations.add(annotation)
             return saveEdited(document, "annotated")
