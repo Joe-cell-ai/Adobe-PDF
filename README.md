@@ -10,6 +10,7 @@ A privacy-first, open-source native Android PDF workspace built from scratch.
 - Page organizer with thumbnails, selection, reorder, delete, duplicate, extract and rotate operations
 - Local PDF merge, first-page extraction and rotate-all-pages tools
 - PDF editor overlays: add text, insert an image, add a highlight rectangle and add a typed italic signature
+- Offline OCR using the bundled ML Kit Latin text model; create a searchable PDF by adding an invisible text layer to scanned pages
 - Edited files are exported as separate PDFs; the source document is not overwritten
 - No account or cloud upload is required for these local operations
 
@@ -21,7 +22,7 @@ Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run t
 
 - Free-position editing controls and page-specific editor selection
 - Drawn signatures, richer annotations, stamps and links
-- OCR and searchable PDFs
+- OCR for additional scripts/languages and improved text positioning
 - Image/PDF conversions and compression
 - Forms, metadata, document security and redaction
 - Accessibility, dark theme, large-file testing and release hardening
