@@ -13,6 +13,9 @@ A privacy-first, open-source native Android PDF workspace built from scratch.
 - Offline OCR using the bundled ML Kit Latin text model; create a searchable PDF by adding an invisible text layer to scanned pages
 - Convert multiple images into a multi-page PDF
 - Compress image-heavy PDFs by rendering pages to JPEG and rebuilding a smaller PDF
+- PDF sticky-note annotations and clickable HTTP/HTTPS link annotations
+- Edit standard PDF metadata: title, author, subject and keywords
+- Password-protect PDFs with separate user and owner passwords (128-bit encryption)
 - Edited files are exported as separate PDFs; the source document is not overwritten
 - No account or cloud upload is required for these local operations
 
@@ -26,7 +29,7 @@ Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run t
 - Drawn signatures, richer annotations, stamps and links
 - OCR for additional scripts/languages and improved text positioning
 - Additional conversion formats (PDF to image, Office formats) and non-destructive compression that preserves selectable text and vector graphics
-- Forms, metadata, document security and redaction
+- Interactive form filling, metadata inspection, stronger document security and true content redaction
 - Accessibility, dark theme, large-file testing and release hardening
 
 ## Feature references
@@ -35,4 +38,4 @@ Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run t
 - [BentoPDF](https://www.bentopdf.com/) — local-first tool collection and page workflows
 - [Sejda PDF Editor](https://www.sejda.com/pdf-editor) — document editing, annotations, forms and signatures
 
-Compression currently rasterises page content, so selectable text, vector graphics and form elements are not preserved in the compressed copy. Keep the original when those properties matter. These products are feature references, not bundled source code, branding or assets. This project is independently implemented. Review third-party library licences and attribution requirements before redistribution.
+Compression currently rasterises page content, so selectable text, vector graphics and form elements are not preserved in the compressed copy. Keep the original when those properties matter. Annotation and web-link placement currently targets page 1 with a preset position. Password protection uses standard 128-bit PDF encryption; it is not a substitute for secure file sharing or a strong password. These products are feature references, not bundled source code, branding or assets. This project is independently implemented. Review third-party library licences and attribution requirements before redistribution.
