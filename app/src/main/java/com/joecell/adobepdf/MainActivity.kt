@@ -860,7 +860,14 @@ private fun PdfPagePreview(uri: Uri, pageIndex: Int, maxDimension: Int, modifier
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(uri, pageIndex, maxDimension) {
         bitmap = withContext(Dispatchers.IO) {
-            val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: error("Cannot open PDF.")
+            val descriptor = if (uri.scheme == "file") {
+                android.os.ParcelFileDescriptor.open(
+                    File(uri.path ?: error("Invalid draft PDF path.")),
+                    android.os.ParcelFileDescriptor.MODE_READ_ONLY
+                )
+            } else {
+                context.contentResolver.openFileDescriptor(uri, "r")
+            } ?: error("Cannot open PDF.")
             descriptor.use { pfd ->
                 android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
                     require(pageIndex in 0 until renderer.pageCount) { "Page not found." }
