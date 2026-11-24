@@ -348,12 +348,17 @@ private fun PdfHome() {
                             .pointerInput(Unit) {
                                 detectTransformGestures { centroid, panChange, zoomChange, _ ->
                                     val previousZoom = zoom
-                                    val nextZoom = (previousZoom * zoomChange).coerceIn(0.5f, 5f)
+                                    val nextZoom = PdfZoomTransform.nextScale(previousZoom, zoomChange)
                                     val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
                                     val focalOffset = centroid - center
-                                    val ratio = nextZoom / previousZoom
-                                    pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero
-                                        else (pan - focalOffset) * ratio + focalOffset + panChange
+                                    val nextPan = PdfZoomTransform.focalPan(
+                                        PdfZoomTransform.Point(pan.x, pan.y),
+                                        PdfZoomTransform.Point(focalOffset.x, focalOffset.y),
+                                        PdfZoomTransform.Point(panChange.x, panChange.y),
+                                        previousZoom,
+                                        nextZoom
+                                    )
+                                    pan = androidx.compose.ui.geometry.Offset(nextPan.x, nextPan.y)
                                     zoom = nextZoom
                                 }
                             }
@@ -363,9 +368,14 @@ private fun PdfHome() {
                                     val nextZoom = if (previousZoom > 1.01f) 1f else 2f
                                     val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
                                     val focalOffset = tap - center
-                                    val ratio = nextZoom / previousZoom
-                                    pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero
-                                        else (pan - focalOffset) * ratio + focalOffset
+                                    val nextPan = PdfZoomTransform.focalPan(
+                                        PdfZoomTransform.Point(pan.x, pan.y),
+                                        PdfZoomTransform.Point(focalOffset.x, focalOffset.y),
+                                        PdfZoomTransform.Point(0f, 0f),
+                                        previousZoom,
+                                        nextZoom
+                                    )
+                                    pan = androidx.compose.ui.geometry.Offset(nextPan.x, nextPan.y)
                                     zoom = nextZoom
                                 })
                             }
