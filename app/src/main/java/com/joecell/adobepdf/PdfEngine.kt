@@ -115,7 +115,7 @@ class PdfEngine(private val context: Context) {
         require(text.isNotBlank()) { "Enter text to add." }
         val document = openDocument(uri)
         try {
-            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            PdfEditorValidation.requirePageIndex(pageIndex, document.numberOfPages)
             val page = document.getPage(pageIndex)
             PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
                 stream.beginText()
@@ -132,7 +132,8 @@ class PdfEngine(private val context: Context) {
         uri: Uri, imageUri: Uri, pageIndex: Int = 0,
         xRatio: Float = 0.29f, yRatio: Float = 0.30f, widthRatio: Float = 0.42f
     ): File {
-        require(xRatio in 0f..1f && yRatio in 0f..1f && widthRatio in 0.02f..1f) { "Image position or size is invalid." }
+        PdfEditorValidation.requireNormalizedPoint(xRatio, yRatio)
+        require(widthRatio.isFinite() && widthRatio in 0.02f..1f) { "Image width must be between 2 and 100 percent." }
         val document = openDocument(uri)
         try {
             require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
@@ -345,9 +346,8 @@ class PdfEngine(private val context: Context) {
 
     /** Add a clickable web link annotation to the selected page. */
     fun addWebLink(uri: Uri, url: String, pageIndex: Int): File {
+        PdfEditorValidation.requireHttpUrl(url)
         val parsed = android.net.Uri.parse(url.trim())
-        require(parsed.scheme == "https" || parsed.scheme == "http") { "Enter a valid http or https URL." }
-        require(!parsed.host.isNullOrBlank()) { "Enter a valid web address." }
         val document = openDocument(uri)
         try {
             require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
@@ -404,7 +404,7 @@ class PdfEngine(private val context: Context) {
     /** Place text using normalized page coordinates (0..1, origin at top-left). */
     fun addPositionedText(uri: Uri, text: String, pageIndex: Int, xRatio: Float, yRatio: Float, fontSize: Float = 16f): File {
         require(text.isNotBlank()) { "Enter text to add." }
-        require(xRatio in 0f..1f && yRatio in 0f..1f) { "Position must be between 0 and 100 percent." }
+        PdfEditorValidation.requireNormalizedPoint(xRatio, yRatio)
         require(fontSize in 6f..72f) { "Font size must be between 6 and 72 points." }
         val document = openDocument(uri)
         try {
@@ -455,8 +455,7 @@ class PdfEngine(private val context: Context) {
      */
     fun redactRegion(uri: Uri, pageIndex: Int, left: Float, top: Float, width: Float, height: Float): File {
         require(pageIndex >= 0) { "Page index is invalid." }
-        require(left in 0f..1f && top in 0f..1f && width > 0f && height > 0f &&
-            left + width <= 1.001f && top + height <= 1.001f) { "Redaction area must fit inside the page." }
+        PdfEditorValidation.requireNormalizedRectangle(left, top, width, height)
         val source = openDocument(uri)
         val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
             ?: run { source.close(); error("Cannot open PDF for redaction.") }
