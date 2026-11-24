@@ -15,7 +15,6 @@ class PdfEditHistoryTest {
         history.record(original, first, "Add text")
         history.record(first, second, "Insert image")
 
-        assertEquals(second, history.redo())
         assertEquals(first, history.undo())
         assertEquals(original, history.undo())
         assertNull(history.undo())
@@ -36,8 +35,7 @@ class PdfEditHistoryTest {
 
         history.record(first, alternate, "Alternate")
         assertFalse(history.canRedo)
-        assertEquals(alternate, history.undo())
-        assertEquals(first, history.redo())
+        assertEquals(first, history.undo())
         assertEquals(alternate, history.redo())
     }
 
