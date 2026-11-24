@@ -309,13 +309,13 @@ private fun PdfHome() {
                     var zoom by remember(uri) { mutableFloatStateOf(1f) }
                     var pan by remember(uri) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                     val zoomState = rememberTransformableState { zoomChange, panChange, _ ->
-                        val nextZoom = (zoom * zoomChange).coerceIn(1f, 5f)
+                        val nextZoom = (zoom * zoomChange).coerceIn(0.5f, 5f)
                         zoom = nextZoom
                         pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero else pan + panChange
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("$pageCount pages · ${(zoom * 100).toInt()}%", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(1f); if (zoom <= 1.001f) pan = androidx.compose.ui.geometry.Offset.Zero }, enabled = zoom > 1.001f) { Icon(Icons.Default.Remove, "Zoom out") }
+                        IconButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(0.5f); if (zoom <= 1.001f) pan = androidx.compose.ui.geometry.Offset.Zero }, enabled = zoom > 1.001f) { Icon(Icons.Default.Remove, "Zoom out") }
                         IconButton(onClick = { zoom = (zoom * 1.25f).coerceAtMost(5f) }) { Icon(Icons.Default.Add, "Zoom in") }
                         TextButton(onClick = { zoom = 1f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit width") }
                         TextButton(onClick = { zoom = 0.85f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit page") }
@@ -350,6 +350,12 @@ private fun PdfHome() {
                     LazyColumn(
                         Modifier.weight(1f).fillMaxWidth()
                             .transformable(zoomState)
+                            .pointerInput(zoom) {
+                                androidx.compose.foundation.gestures.detectTapGestures(onDoubleTap = {
+                                    zoom = if (zoom > 1.01f) 1f else 2f
+                                    pan = androidx.compose.ui.geometry.Offset.Zero
+                                })
+                            }
                             .graphicsLayer {
                                 scaleX = zoom
                                 scaleY = zoom
