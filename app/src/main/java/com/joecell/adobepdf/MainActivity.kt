@@ -273,10 +273,10 @@ private fun PdfHome() {
                     runOperation("Merging PDFs") { engine.merge(selected) }
                 } }
                 item { ToolCard("Extract first page", "Create a new PDF from page one", Icons.Default.ContentCut, selected.size != 1 || busy) {
-                    runOperation("Extracting page") { engine.extractPages(selected.first(), listOf(0)) }
+                    runOperation("Extracting page") { engine.extractPages(activeUri ?: selected.first(), listOf(0)) }
                 } }
                 item { ToolCard("Rotate pages", "Rotate every page by 90 degrees", Icons.Default.RotateRight, selected.size != 1 || busy) {
-                    runOperation("Rotating pages") { engine.rotateAllPages(selected.first()) }
+                    runOperation("Rotating pages") { engine.rotateAllPages(activeUri ?: selected.first()) }
                 } }
                 item { ToolCard("Add text", "Place a text label on the first page", Icons.Default.Edit, selected.size != 1 || busy) { showTextDialog = true } }
                 item { ToolCard("Compress PDF", "Choose image quality and reduce file size; output is flattened", Icons.Default.Compress, selected.size != 1 || busy) {
@@ -297,10 +297,10 @@ private fun PdfHome() {
                 } }
                 item { ToolCard("Crop PDF", "Trim page margins with a custom crop rectangle", Icons.Default.Crop, selected.size != 1 || busy) { showCropDialog = true } }
                 item { ToolCard("Remove blank pages", "Detect mostly-white pages on-device and remove them", Icons.Default.AutoDelete, selected.size != 1 || busy) {
-                    runOperation("Removing blank pages") { engine.removeBlankPages(selected.first()) }
+                    runOperation("Removing blank pages") { engine.removeBlankPages(activeUri ?: selected.first()) }
                 } }
                 item { ToolCard("Remove metadata", "Clear title, author, dates and embedded XMP metadata", Icons.Default.DeleteSweep, selected.size != 1 || busy) {
-                    runOperation("Removing metadata") { engine.removeMetadata(selected.first()) }
+                    runOperation("Removing metadata") { engine.removeMetadata(activeUri ?: selected.first()) }
                 } }
                 item { ToolCard("Unlock PDF", "Remove password protection using the correct document password", Icons.Default.LockOpen, selected.size != 1 || busy) { showUnlockDialog = true } }
                 item { ToolCard("Password protect PDF", "Encrypt a PDF with an open password and owner password", Icons.Default.Lock, selected.size != 1 || busy) {
