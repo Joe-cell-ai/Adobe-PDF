@@ -67,6 +67,18 @@ private fun PdfHome() {
     var showTextDialog by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
     var signatureText by remember { mutableStateOf("") }
+    var showNoteDialog by remember { mutableStateOf(false) }
+    var noteText by remember { mutableStateOf("") }
+    var showLinkDialog by remember { mutableStateOf(false) }
+    var linkText by remember { mutableStateOf("https://") }
+    var showMetadataDialog by remember { mutableStateOf(false) }
+    var metadataTitle by remember { mutableStateOf("") }
+    var metadataAuthor by remember { mutableStateOf("") }
+    var metadataSubject by remember { mutableStateOf("") }
+    var metadataKeywords by remember { mutableStateOf("") }
+    var showProtectDialog by remember { mutableStateOf(false) }
+    var userPassword by remember { mutableStateOf("") }
+    var ownerPassword by remember { mutableStateOf("") }
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
     val rotations = remember { mutableStateMapOf<Int, Int>() }
@@ -194,6 +206,12 @@ private fun PdfHome() {
                 item { ToolCard("Images to PDF", "Combine photos and images into a multi-page PDF", Icons.Default.Collections, busy) {
                     pickImagesForPdf.launch("image/*")
                 } }
+                item { ToolCard("Edit PDF metadata", "Set document title, author, subject and keywords", Icons.Default.Info, selected.size != 1 || busy) {
+                    showMetadataDialog = true
+                } }
+                item { ToolCard("Password protect PDF", "Encrypt a PDF with an open password and owner password", Icons.Default.Lock, selected.size != 1 || busy) {
+                    showProtectDialog = true
+                } }
                 item {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -227,6 +245,8 @@ private fun PdfHome() {
                         OutlinedButton(enabled = !busy, onClick = { pickImage.launch("image/*") }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Adding highlight") { engine.addHighlight(uri, 0) } }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
                         OutlinedButton(enabled = !busy, onClick = { showSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Signature") }
+                        OutlinedButton(enabled = !busy, onClick = { showNoteDialog = true }) { Icon(Icons.Default.Comment, null); Text("Note") }
+                        OutlinedButton(enabled = !busy, onClick = { showLinkDialog = true }) { Icon(Icons.Default.Link, null); Text("Link") }
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Creating searchable PDF") { engine.createSearchablePdf(uri) } }) { Icon(Icons.Default.Search, null); Text("OCR") }
                     }
                     LazyColumn(Modifier.weight(1f).fillMaxWidth().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -324,7 +344,51 @@ private fun PdfHome() {
         confirmButton = { TextButton(onClick = { showTextDialog = false; runOperation("Adding text") { engine.addTextOverlay(activeUri ?: selected.first(), textToAdd, 0) } }) { Text("Add text") } },
         dismissButton = { TextButton(onClick = { showTextDialog = false }) { Text("Cancel") } }
     )
-    if (showSignatureDialog) AlertDialog(
+
+    if (showNoteDialog) AlertDialog(
+        onDismissRequest = { showNoteDialog = false },
+        title = { Text("Add note annotation") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = noteText, onValueChange = { noteText = it }, label = { Text("Note") }, minLines = 3)
+            Text("Adds a PDF sticky-note annotation to page 1.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showNoteDialog = false; activeUri?.let { uri -> runOperation("Adding note") { engine.addNoteAnnotation(uri, noteText, 0) } } }) { Text("Add note") } },
+        dismissButton = { TextButton(onClick = { showNoteDialog = false }) { Text("Cancel") } }
+    )
+    if (showLinkDialog) AlertDialog(
+        onDismissRequest = { showLinkDialog = false },
+        title = { Text("Add web link") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = linkText, onValueChange = { linkText = it }, label = { Text("https:// address") }, singleLine = true)
+            Text("Adds a clickable link annotation to page 1.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, 0) } } }) { Text("Add link") } },
+        dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Cancel") } }
+    )
+    if (showMetadataDialog) AlertDialog(
+        onDismissRequest = { showMetadataDialog = false },
+        title = { Text("PDF document properties") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = metadataTitle, onValueChange = { metadataTitle = it }, label = { Text("Title") }, singleLine = true)
+            OutlinedTextField(value = metadataAuthor, onValueChange = { metadataAuthor = it }, label = { Text("Author") }, singleLine = true)
+            OutlinedTextField(value = metadataSubject, onValueChange = { metadataSubject = it }, label = { Text("Subject") }, singleLine = true)
+            OutlinedTextField(value = metadataKeywords, onValueChange = { metadataKeywords = it }, label = { Text("Keywords") }, singleLine = true)
+        } },
+        confirmButton = { TextButton(onClick = { showMetadataDialog = false; selected.firstOrNull()?.let { uri -> runOperation("Updating metadata") { engine.updateMetadata(uri, metadataTitle, metadataAuthor, metadataSubject, metadataKeywords) } } }) { Text("Apply") } },
+        dismissButton = { TextButton(onClick = { showMetadataDialog = false }) { Text("Cancel") } }
+    )
+    if (showProtectDialog) AlertDialog(
+        onDismissRequest = { showProtectDialog = false },
+        title = { Text("Password protect PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = userPassword, onValueChange = { userPassword = it }, label = { Text("Open password (6+ characters)") }, singleLine = true)
+            OutlinedTextField(value = ownerPassword, onValueChange = { ownerPassword = it }, label = { Text("Owner password (8+ characters)") }, singleLine = true)
+            Text("The open password is required to view the output. Keep both passwords safe.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showProtectDialog = false; selected.firstOrNull()?.let { uri -> runOperation("Protecting PDF") { engine.protectPdf(uri, userPassword, ownerPassword) } } }) { Text("Protect") } },
+        dismissButton = { TextButton(onClick = { showProtectDialog = false }) { Text("Cancel") } }
+    )
+\n    if (showSignatureDialog) AlertDialog(
         onDismissRequest = { showSignatureDialog = false },
         title = { Text("Add typed signature") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
