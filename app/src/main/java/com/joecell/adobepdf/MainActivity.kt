@@ -67,10 +67,6 @@ private fun PdfHome() {
     var showTextDialog by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
     var signatureText by remember { mutableStateOf("") }
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
-        val documentUri = activeUri
-        if (imageUri != null && documentUri != null) runOperation("Inserting image") { engine.insertImage(documentUri, imageUri, 0) }
-    }
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
     val rotations = remember { mutableStateMapOf<Int, Int>() }
@@ -113,6 +109,11 @@ private fun PdfHome() {
             } catch (e: Exception) { message = e.message ?: "$label failed." }
             finally { busy = false }
         }
+    }
+
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
+        val documentUri = activeUri
+        if (imageUri != null && documentUri != null) runOperation("Inserting image") { engine.insertImage(documentUri, imageUri, 0) }
     }
 
     Scaffold(
