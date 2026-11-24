@@ -309,10 +309,13 @@ class PdfEngine(private val context: Context) {
                                 out.toByteArray()
                             }
                             val image = PDImageXObject.createFromByteArray(result, bytes, "compressed_page_${index + 1}")
-                            val sourceBox = source.getPage(index).mediaBox
-                            val page = PDPage(PDRectangle(sourceBox.width, sourceBox.height))
+                            val sourcePage = source.getPage(index)
+                            val sourceBox = sourcePage.mediaBox
+                            val pageWidth = if (sourcePage.rotation % 180 != 0) sourceBox.height else sourceBox.width
+                            val pageHeight = if (sourcePage.rotation % 180 != 0) sourceBox.width else sourceBox.height
+                            val page = PDPage(PDRectangle(pageWidth, pageHeight))
                             result.addPage(page)
-                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, sourceBox.width, sourceBox.height) }
+                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, pageWidth, pageHeight) }
                         } finally { bitmap.recycle() }
                     } finally { rendered.close() }
                 }
@@ -489,11 +492,14 @@ class PdfEngine(private val context: Context) {
                                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                                 out.toByteArray()
                             }
-                            val sourceBox = source.getPage(index).mediaBox
-                            val page = PDPage(PDRectangle(sourceBox.width, sourceBox.height))
+                            val sourcePage = source.getPage(index)
+                            val sourceBox = sourcePage.mediaBox
+                            val pageWidth = if (sourcePage.rotation % 180 != 0) sourceBox.height else sourceBox.width
+                            val pageHeight = if (sourcePage.rotation % 180 != 0) sourceBox.width else sourceBox.height
+                            val page = PDPage(PDRectangle(pageWidth, pageHeight))
                             result.addPage(page)
                             val image = PDImageXObject.createFromByteArray(result, bytes, "redacted_page_${index + 1}")
-                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, sourceBox.width, sourceBox.height) }
+                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, pageWidth, pageHeight) }
                         } finally { bitmap.recycle() }
                     }
                 }
