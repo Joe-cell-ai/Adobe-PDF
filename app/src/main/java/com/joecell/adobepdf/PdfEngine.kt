@@ -417,6 +417,31 @@ class PdfEngine(private val context: Context) {
         } finally { document.close() }
     }
 
+    /** Add a hand-drawn signature from normalized points (0..1, top-left origin). */
+    fun addDrawnSignature(uri: Uri, pageIndex: Int, points: List<Pair<Float, Float>>): File {
+        require(points.size >= 2) { "Draw a signature first." }
+        require(points.all { it.first in 0f..1f && it.second in 0f..1f }) { "Signature coordinates are invalid." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            val box = page.mediaBox
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.setStrokingColor(25, 45, 85)
+                stream.setLineWidth(2.2f)
+                stream.setLineCapStyle(1)
+                stream.setLineJoinStyle(1)
+                val first = points.first()
+                stream.moveTo(first.first * box.width, (1f - first.second) * box.height)
+                points.drop(1).forEach { point ->
+                    stream.lineTo(point.first * box.width, (1f - point.second) * box.height)
+                }
+                stream.stroke()
+            }
+            return saveEdited(document, "signed")
+        } finally { document.close() }
+    }
+
     /**
      * Permanently redact a normalized rectangle by rasterizing every page and painting
      * the target pixels black before rebuilding the PDF. This removes selectable text,
