@@ -9,9 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.TransformableState
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -28,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -287,14 +284,6 @@ private fun PdfHome() {
 @Composable
 private fun PdfPagePreview(uri: Uri, pageIndex: Int, maxDimension: Int, modifier: Modifier = Modifier) {
     var bitmap by remember(uri, pageIndex, maxDimension) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    LaunchedEffect(uri, pageIndex, maxDimension) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                val resolver = androidx.compose.ui.platform.LocalContext.current.contentResolver
-                null
-            }.getOrNull()
-        }
-    }
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(uri, pageIndex, maxDimension) {
         bitmap = withContext(Dispatchers.IO) {
@@ -302,7 +291,8 @@ private fun PdfPagePreview(uri: Uri, pageIndex: Int, maxDimension: Int, modifier
             descriptor.use { pfd ->
                 android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
                     require(pageIndex in 0 until renderer.pageCount) { "Page not found." }
-                    renderer.openPage(pageIndex).use { page ->
+                    val page = renderer.openPage(pageIndex)
+                    try {
                         val ratio = minOf(1f, maxDimension.toFloat() / maxOf(page.width, page.height))
                         val width = (page.width * ratio).toInt().coerceAtLeast(1)
                         val height = (page.height * ratio).toInt().coerceAtLeast(1)
@@ -310,7 +300,7 @@ private fun PdfPagePreview(uri: Uri, pageIndex: Int, maxDimension: Int, modifier
                             image.eraseColor(android.graphics.Color.WHITE)
                             page.render(image, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         }
-                    }
+                    } finally { page.close() }
                 }
             }
         }
