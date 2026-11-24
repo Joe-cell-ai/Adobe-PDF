@@ -116,6 +116,10 @@ private fun PdfHome() {
         if (imageUri != null && documentUri != null) runOperation("Inserting image") { engine.insertImage(documentUri, imageUri, 0) }
     }
 
+    val pickImagesForPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { imageUris ->
+        if (imageUris.isNotEmpty()) runOperation("Converting images to PDF") { engine.imagesToPdf(imageUris) }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -184,6 +188,12 @@ private fun PdfHome() {
                     runOperation("Rotating pages") { engine.rotateAllPages(selected.first()) }
                 } }
                 item { ToolCard("Add text", "Place a text label on the first page", Icons.Default.Edit, selected.size != 1 || busy) { showTextDialog = true } }
+                item { ToolCard("Compress PDF", "Reduce file size by optimising page images; flattens text and vector content", Icons.Default.Compress, selected.size != 1 || busy) {
+                    runOperation("Compressing PDF") { engine.compressPdf(selected.first()) }
+                } }
+                item { ToolCard("Images to PDF", "Combine photos and images into a multi-page PDF", Icons.Default.Collections, busy) {
+                    pickImagesForPdf.launch("image/*")
+                } }
                 item {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -196,7 +206,7 @@ private fun PdfHome() {
                         }
                     }
                 }
-                item { Text("Phase 2 adds the full reader and page organizer. More editing and OCR tools are planned next.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 24.dp)) }
+                item { Text("Convert images to PDF or reduce image-heavy PDF file sizes with on-device tools.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 24.dp)) }
             }
 
             PdfScreen.VIEWER -> {
