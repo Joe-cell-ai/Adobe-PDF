@@ -169,7 +169,12 @@ private fun PdfHome() {
             busy = true
             message = "$label…"
             try {
-                output = withContext(Dispatchers.IO) { task() }
+                val hadOpenDocument = activeUri != null
+                val result = withContext(Dispatchers.IO) { task() }
+                output = result
+                // Keep editor operations chained: the next operation in the
+                // viewer starts from this immutable draft, never the original.
+                if (hadOpenDocument) activeUri = Uri.fromFile(result)
                 message = "$label completed. Save the new PDF to keep the changes."
             } catch (e: Exception) { message = e.message ?: "$label failed." }
             finally { busy = false }
