@@ -499,7 +499,7 @@ class PdfEngine(private val context: Context) {
                     }
                 }
             }
-            result.documentInformation.title = source.documentInformation.title
+            // Do not copy source metadata into the redacted output.
             return saveEdited(result, "redacted")
         } finally {
             result.close()
