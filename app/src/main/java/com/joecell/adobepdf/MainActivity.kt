@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,6 +98,8 @@ private fun PdfHome() {
     var formFieldNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var formFieldName by remember { mutableStateOf("") }
     var formFieldValue by remember { mutableStateOf("") }
+    var signaturePoints by remember { mutableStateOf<List<androidx.compose.ui.geometry.Offset>>(emptyList()) }
+    var showDrawnSignatureDialog by remember { mutableStateOf(false) }
 
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
@@ -267,6 +272,7 @@ private fun PdfHome() {
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Creating searchable PDF") { engine.createSearchablePdf(uri) } }) { Icon(Icons.Default.Search, null); Text("OCR") }
 
                         OutlinedButton(enabled = !busy, onClick = { showPositionDialog = true }) { Icon(Icons.Default.OpenWith, null); Text("Position text") }
+                        OutlinedButton(enabled = !busy, onClick = { signaturePoints = emptyList(); showDrawnSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Draw signature") }
                         OutlinedButton(enabled = !busy, onClick = { showRedactDialog = true }) { Icon(Icons.Default.Block, null); Text("Redact") }
                         OutlinedButton(enabled = !busy, onClick = {
                             scope.launch {
@@ -423,6 +429,48 @@ private fun PdfHome() {
         dismissButton = { TextButton(onClick = { showProtectDialog = false }) { Text("Cancel") } }
     )
 
+
+    if (showDrawnSignatureDialog) AlertDialog(
+        onDismissRequest = { showDrawnSignatureDialog = false },
+        title = { Text("Draw your signature") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Sign in the box below. The signature is added to page 1.", color = Color.Gray, fontSize = 12.sp)
+            Canvas(
+                modifier = Modifier.fillMaxWidth().height(150.dp)
+                    .background(Color(0xFFF7F9FF), RoundedCornerShape(10.dp))
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { start -> signaturePoints = listOf(start) },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                signaturePoints = signaturePoints + change.position
+                            }
+                        )
+                    }
+            ) {
+                for (i in 1 until signaturePoints.size) {
+                    drawLine(
+                        color = Color(0xFF192D55),
+                        start = signaturePoints[i - 1],
+                        end = signaturePoints[i],
+                        strokeWidth = 3.5.dp.toPx(),
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                }
+            }
+            TextButton(onClick = { signaturePoints = emptyList() }) { Text("Clear signature") }
+        } },
+        confirmButton = { TextButton(enabled = signaturePoints.size > 1, onClick = {
+            showDrawnSignatureDialog = false
+            activeUri?.let { uri ->
+                val normalized = signaturePoints.map { point ->
+                    (point.x / 1000f).coerceIn(0f, 1f) to (point.y / 450f).coerceIn(0f, 1f)
+                }
+                runOperation("Adding handwritten signature") { engine.addDrawnSignature(uri, 0, normalized) }
+            }
+        }) { Text("Add signature") } },
+        dismissButton = { TextButton(onClick = { showDrawnSignatureDialog = false }) { Text("Cancel") } }
+    )
 
     if (showPositionDialog) AlertDialog(
         onDismissRequest = { showPositionDialog = false },
