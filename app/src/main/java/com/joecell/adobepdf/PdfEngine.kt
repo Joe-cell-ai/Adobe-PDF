@@ -17,6 +17,11 @@ import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
@@ -310,6 +315,83 @@ class PdfEngine(private val context: Context) {
             source.close()
             descriptor.close()
         }
+    }
+
+
+    /** Add a real PDF sticky-note annotation on a selected page. */
+    fun addNoteAnnotation(uri: Uri, note: String, pageIndex: Int): File {
+        require(note.isNotBlank()) { "Enter a note." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            val box = page.mediaBox
+            val annotation = PDAnnotationText().apply {
+                contents = note.take(2000)
+                rectangle = PDRectangle(box.width - 52f, box.height - 76f, 28f, 28f)
+                titlePopup = "Note"
+                isOpen = false
+            }
+            page.annotations.add(annotation)
+            return saveEdited(document, "annotated")
+        } finally { document.close() }
+    }
+
+    /** Add a clickable web link annotation to the selected page. */
+    fun addWebLink(uri: Uri, url: String, pageIndex: Int): File {
+        val parsed = android.net.Uri.parse(url.trim())
+        require(parsed.scheme == "https" || parsed.scheme == "http") { "Enter a valid http or https URL." }
+        require(!parsed.host.isNullOrBlank()) { "Enter a valid web address." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            val box = page.mediaBox
+            val link = PDAnnotationLink().apply {
+                rectangle = PDRectangle(48f, box.height - 92f, (box.width - 96f).coerceAtLeast(80f), 28f)
+                action = PDActionURI().apply { this.uri = parsed.toString() }
+            }
+            page.annotations.add(link)
+            return saveEdited(document, "linked")
+        } finally { document.close() }
+    }
+
+    /** Update standard PDF document properties without changing page content. */
+    fun updateMetadata(uri: Uri, title: String, author: String, subject: String, keywords: String): File {
+        val document = openDocument(uri)
+        try {
+            document.documentInformation.apply {
+                if (title.isNotBlank()) this.title = title.take(250)
+                if (author.isNotBlank()) this.author = author.take(150)
+                if (subject.isNotBlank()) this.subject = subject.take(500)
+                if (keywords.isNotBlank()) this.keywords = keywords.take(500)
+            }
+            return saveEdited(document, "metadata")
+        } finally { document.close() }
+    }
+
+    /** Encrypt a PDF with a user-open password and a separate owner password. */
+    fun protectPdf(uri: Uri, userPassword: String, ownerPassword: String): File {
+        require(userPassword.length >= 6) { "User password must be at least 6 characters." }
+        require(ownerPassword.length >= 8) { "Owner password must be at least 8 characters." }
+        require(userPassword != ownerPassword) { "Use different user and owner passwords." }
+        val document = openDocument(uri)
+        try {
+            val policy = StandardProtectionPolicy(ownerPassword, userPassword, AccessPermission()).apply {
+                encryptionKeyLength = 128
+                permissions = AccessPermission().apply {
+                    setCanPrint(true)
+                    setCanModify(false)
+                    setCanExtractContent(false)
+                    setCanModifyAnnotations(false)
+                    setCanFillInForm(false)
+                    setCanAssembleDocument(false)
+                    setCanPrintDegraded(true)
+                }
+            }
+            document.protect(policy)
+            return saveEdited(document, "protected")
+        } finally { document.close() }
     }
 
     fun pageCount(uri: Uri): Int {
