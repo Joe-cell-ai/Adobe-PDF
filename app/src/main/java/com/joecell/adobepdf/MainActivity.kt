@@ -492,7 +492,7 @@ private fun PdfHome() {
                             onDrag = { change, _ ->
                                 change.consume()
                                 val point = (change.position.x / size.width).coerceIn(0f, 1f) to (change.position.y / size.height).coerceIn(0f, 1f)
-                                signatureStrokes = signatureStrokes.dropLast(1) + (signatureStrokes.last() + point)
+                                signatureStrokes = signatureStrokes.dropLast(1) + listOf(signatureStrokes.last() + point)
                             }
                         )
                     }
