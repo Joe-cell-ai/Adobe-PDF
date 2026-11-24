@@ -343,7 +343,8 @@ private fun PdfHome() {
 
                     }
                     LazyColumn(
-                        Modifier.weight(1f).fillMaxWidth()
+                        userScrollEnabled = zoom <= 1.001f,
+                        modifier = Modifier.weight(1f).fillMaxWidth()
                             .pointerInput(Unit) {
                                 detectTransformGestures { centroid, panChange, zoomChange, _ ->
                                     val previousZoom = zoom
