@@ -13,12 +13,17 @@ import com.google.android.gms.tasks.Tasks
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
+import com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.util.Matrix
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 
 /** Local-only PDF operations using Android's Storage Access Framework. */
 class PdfEngine(private val context: Context) {
@@ -215,7 +220,7 @@ class PdfEngine(private val context: Context) {
                                             val y = pdfPage.mediaBox.height - bounds.bottom * scaleY
                                             stream.beginText()
                                             stream.setFont(PDType1Font.HELVETICA, fontSize)
-                                            stream.setRenderingMode(PDPageContentStream.RenderingMode.NEITHER)
+                                            stream.setRenderingMode(RenderingMode.NEITHER)
                                             stream.setTextMatrix(Matrix.getTranslateInstance(x, y))
                                             runCatching { stream.showText(cleanText) }
                                             stream.endText()
@@ -231,6 +236,79 @@ class PdfEngine(private val context: Context) {
         } finally {
             recognizer.close()
             document.close()
+        }
+    }
+
+
+    /** Convert selected image files into a single multi-page PDF, preserving image aspect ratio. */
+    fun imagesToPdf(imageUris: List<Uri>): File {
+        require(imageUris.isNotEmpty()) { "Choose at least one image." }
+        val document = PDDocument()
+        try {
+            imageUris.forEachIndexed { index, uri ->
+                val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                    ?: error("Could not read image ${index + 1}.")
+                try {
+                    val pageSize = PDRectangle(595f, 842f)
+                    val page = PDPage(pageSize)
+                    document.addPage(page)
+                    val maxW = pageSize.width - 48f
+                    val maxH = pageSize.height - 48f
+                    val scale = minOf(maxW / bitmap.width, maxH / bitmap.height)
+                    val width = bitmap.width * scale
+                    val height = bitmap.height * scale
+                    val x = (pageSize.width - width) / 2f
+                    val y = (pageSize.height - height) / 2f
+                    val image = LosslessFactory.createFromImage(document, bitmap)
+                    PDPageContentStream(document, page).use { it.drawImage(image, x, y, width, height) }
+                } finally { bitmap.recycle() }
+            }
+            return saveEdited(document, "images")
+        } finally { document.close() }
+    }
+
+    /**
+     * Create a smaller raster-optimised PDF. This deliberately flattens page content;
+     * it is best for scanned/image-heavy files, not documents needing selectable text.
+     */
+    fun compressPdf(uri: Uri, jpegQuality: Int = 68): File {
+        require(jpegQuality in 35..90) { "Compression quality must be between 35 and 90." }
+        val source = openDocument(uri)
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: run { source.close(); error("Cannot open PDF for compression.") }
+        val result = PDDocument()
+        try {
+            PdfRenderer(descriptor).use { renderer ->
+                require(renderer.pageCount == source.numberOfPages) { "PDF page count changed while opening." }
+                for (index in 0 until renderer.pageCount) {
+                    renderer.openPage(index).use { rendered ->
+                        val scale = minOf(1.5f, 1800f / maxOf(rendered.width, rendered.height))
+                        val bitmap = Bitmap.createBitmap(
+                            (rendered.width * scale).toInt().coerceAtLeast(1),
+                            (rendered.height * scale).toInt().coerceAtLeast(1),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            rendered.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                            val bytes = ByteArrayOutputStream().use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality, out)
+                                out.toByteArray()
+                            }
+                            val image = PDImageXObject.createFromByteArray(result, bytes, "compressed_page_${index + 1}")
+                            val sourceBox = source.getPage(index).mediaBox
+                            val page = PDPage(PDRectangle(sourceBox.width, sourceBox.height))
+                            result.addPage(page)
+                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, sourceBox.width, sourceBox.height) }
+                        } finally { bitmap.recycle() }
+                    }
+                }
+            }
+            return saveEdited(result, "compressed")
+        } finally {
+            result.close()
+            source.close()
+            descriptor.close()
         }
     }
 
