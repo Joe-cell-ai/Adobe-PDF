@@ -18,63 +18,87 @@ class PdfEngine(private val context: Context) {
     fun merge(uris: List<Uri>): File {
         require(uris.size >= 2) { "Choose at least two PDF files to merge." }
         val merger = PDFMergerUtility()
-        uris.forEachIndexed { index, uri ->
-            val input = context.contentResolver.openInputStream(uri)
-                ?: error("Cannot open selected PDF number ${index + 1}.")
-            merger.addSource(input)
+        val streams = uris.mapIndexed { index, uri ->
+            context.contentResolver.openInputStream(uri) ?: error("Cannot open selected PDF number ${index + 1}.")
         }
-        val output = File(context.cacheDir, "merged_${System.currentTimeMillis()}.pdf")
-        FileOutputStream(output).use { stream ->
-            merger.destinationStream = stream
-            merger.mergeDocuments(null)
-        }
-        return output
+        try {
+            streams.forEach { merger.addSource(it) }
+            val output = File(context.cacheDir, "merged_${System.currentTimeMillis()}.pdf")
+            FileOutputStream(output).use { stream ->
+                merger.destinationStream = stream
+                merger.mergeDocuments(null)
+            }
+            return output
+        } finally { streams.forEach { runCatching { it.close() } } }
     }
 
-    fun splitFirstPage(uri: Uri): File {
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
-        val document = input.use { PDDocument.load(it) }
-        require(document.numberOfPages > 0) { "The PDF has no pages." }
+    fun extractPages(uri: Uri, pageIndices: List<Int>): File {
+        require(pageIndices.isNotEmpty()) { "Select at least one page." }
+        val document = openDocument(uri)
         val result = PDDocument()
-        result.importPage(document.getPage(0))
-        val output = File(context.cacheDir, "page_1_${System.currentTimeMillis()}.pdf")
-        result.save(output)
-        result.close()
-        document.close()
-        return output
+        try {
+            pageIndices.forEach { index ->
+                require(index in 0 until document.numberOfPages) { "Page selection is out of range." }
+                result.importPage(document.getPage(index))
+            }
+            val output = File(context.cacheDir, "extracted_${System.currentTimeMillis()}.pdf")
+            result.save(output)
+            return output
+        } finally { result.close(); document.close() }
+    }
+
+    fun rebuild(uri: Uri, pageOrder: List<Int>, rotations: Map<Int, Int> = emptyMap()): File {
+        require(pageOrder.isNotEmpty()) { "A PDF must contain at least one page." }
+        val document = openDocument(uri)
+        val result = PDDocument()
+        try {
+            pageOrder.forEach { sourceIndex ->
+                require(sourceIndex in 0 until document.numberOfPages) { "Page order contains an invalid page." }
+                val imported = result.importPage(document.getPage(sourceIndex))
+                imported.rotation = (document.getPage(sourceIndex).rotation + (rotations[sourceIndex] ?: 0)) % 360
+            }
+            val output = File(context.cacheDir, "organized_${System.currentTimeMillis()}.pdf")
+            result.save(output)
+            return output
+        } finally { result.close(); document.close() }
     }
 
     fun rotateAllPages(uri: Uri): File {
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
-        val document = input.use { PDDocument.load(it) }
-        for (page in document.pages) page.rotation = (page.rotation + 90) % 360
-        val output = File(context.cacheDir, "rotated_${System.currentTimeMillis()}.pdf")
-        document.save(output)
-        document.close()
-        return output
+        val document = openDocument(uri)
+        try {
+            for (page in document.pages) page.rotation = (page.rotation + 90) % 360
+            val output = File(context.cacheDir, "rotated_${System.currentTimeMillis()}.pdf")
+            document.save(output)
+            return output
+        } finally { document.close() }
     }
 
     fun addText(uri: Uri, text: String): File {
         require(text.isNotBlank()) { "Enter text to add." }
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
-        val document = input.use { PDDocument.load(it) }
-        val page = document.getPage(0)
-        PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
-            stream.beginText()
-            stream.setFont(PDType1Font.HELVETICA, 12f)
-            stream.newLineAtOffset(48f, page.mediaBox.height - 64f)
-            stream.showText(text.take(500))
-            stream.endText()
-        }
-        val output = File(context.cacheDir, "edited_${System.currentTimeMillis()}.pdf")
-        document.save(output)
-        document.close()
-        return output
+        val document = openDocument(uri)
+        try {
+            val page = document.getPage(0)
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.beginText()
+                stream.setFont(PDType1Font.HELVETICA, 12f)
+                stream.newLineAtOffset(48f, page.mediaBox.height - 64f)
+                stream.showText(text.take(500))
+                stream.endText()
+            }
+            val output = File(context.cacheDir, "edited_${System.currentTimeMillis()}.pdf")
+            document.save(output)
+            return output
+        } finally { document.close() }
     }
 
     fun pageCount(uri: Uri): Int {
         val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
         return input.use { PDDocument.load(it).use { pdf -> pdf.numberOfPages } }
+    }
+
+    private fun openDocument(uri: Uri): PDDocument {
+        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        return input.use { PDDocument.load(it) }
     }
 
     fun saveToUri(source: File, resolver: ContentResolver, target: Uri) {
