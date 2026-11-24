@@ -282,6 +282,59 @@ class PdfEngine(private val context: Context) {
     }
 
     /**
+     * Export a selected page range as JPEG files inside one ZIP archive.
+     * Pages are rendered sequentially to keep peak bitmap memory bounded.
+     */
+    fun exportPagesAsImages(
+        uri: Uri,
+        firstPage: Int = 1,
+        lastPage: Int,
+        jpegQuality: Int = 85,
+        maxDimension: Int = 2400
+    ): File {
+        require(firstPage >= 1 && lastPage >= firstPage) { "Choose a valid page range." }
+        require(jpegQuality in 40..95) { "Image quality must be between 40 and 95." }
+        require(maxDimension in 800..4000) { "Image size must be between 800 and 4000 pixels." }
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: error("Cannot open PDF for image export.")
+        try {
+            val output = File(context.cacheDir, "pdf_pages_${System.currentTimeMillis()}.zip")
+            android.graphics.pdf.PdfRenderer(descriptor).use { renderer ->
+                require(lastPage <= renderer.pageCount) { "The selected page range exceeds this PDF." }
+                java.util.zip.ZipOutputStream(FileOutputStream(output).buffered()).use { zip ->
+                    for (index in (firstPage - 1) until lastPage) {
+                        renderer.openPage(index).use { page ->
+                            val scale = minOf(1f, maxDimension.toFloat() / maxOf(page.width, page.height))
+                            val bitmap = Bitmap.createBitmap(
+                                (page.width * scale).toInt().coerceAtLeast(1),
+                                (page.height * scale).toInt().coerceAtLeast(1),
+                                Bitmap.Config.ARGB_8888
+                            )
+                            try {
+                                bitmap.eraseColor(android.graphics.Color.WHITE)
+                                page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                                val entry = java.util.zip.ZipEntry("page_${(index + 1).toString().padStart(4, '0')}.jpg")
+                                zip.putNextEntry(entry)
+                                check(bitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality, zip)) {
+                                    "Could not encode page ${index + 1}."
+                                }
+                                zip.closeEntry()
+                            } finally {
+                                bitmap.recycle()
+                            }
+                        }
+                    }
+                }
+            }
+            return output
+        } catch (error: Exception) {
+            throw error
+        } finally {
+            descriptor.close()
+        }
+    }
+
+    /**
      * Create a smaller raster-optimised PDF. This deliberately flattens page content;
      * it is best for scanned/image-heavy files, not documents needing selectable text.
      */

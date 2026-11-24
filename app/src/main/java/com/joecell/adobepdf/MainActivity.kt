@@ -67,6 +67,12 @@ private fun PdfHome() {
     var output by remember { mutableStateOf<File?>(null) }
     var compressionQuality by remember { mutableFloatStateOf(68f) }
     var showCompressionDialog by remember { mutableStateOf(false) }
+    var showImageExportDialog by remember { mutableStateOf(false) }
+    var exportFirstPage by remember { mutableStateOf("1") }
+    var exportLastPage by remember { mutableStateOf("1") }
+    var exportQuality by remember { mutableStateOf("85") }
+    var exportMaxDimension by remember { mutableStateOf("2400") }
+    var zipOutput by remember { mutableStateOf<File?>(null) }
     var textToAdd by remember { mutableStateOf("Approved") }
     var pageCount by remember { mutableIntStateOf(0) }
     var showTextDialog by remember { mutableStateOf(false) }
@@ -124,6 +130,12 @@ private fun PdfHome() {
             activeUri = uri
             screen = PdfScreen.VIEWER
         }
+    }
+    val saveZip = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val file = zipOutput
+        if (uri != null && file != null) runCatching { engine.saveToUri(file, context.contentResolver, uri) }
+            .onSuccess { message = "Images ZIP saved successfully." }
+            .onFailure { message = it.message ?: "ZIP save failed." }
     }
     val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val file = output
@@ -241,6 +253,10 @@ private fun PdfHome() {
                 item { ToolCard("Compress PDF", "Choose image quality and reduce file size; output is flattened", Icons.Default.Compress, selected.size != 1 || busy) {
                     showCompressionDialog = true
                 } }
+                item { ToolCard("PDF to images", "Export a page range as JPEG images in a ZIP file", Icons.Default.Image, selected.size != 1 || busy) {
+                    exportLastPage = pageCount.takeIf { it > 0 }?.toString() ?: "1"
+                    showImageExportDialog = true
+                } }
                 item { ToolCard("Images to PDF", "Combine photos and images into a multi-page PDF", Icons.Default.Collections, busy) {
                     pickImagesForPdf.launch("image/*")
                 } }
@@ -258,6 +274,9 @@ private fun PdfHome() {
                             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                             if (output != null) Button(onClick = { saveFile.launch(output!!.name) }, modifier = Modifier.fillMaxWidth()) {
                                 Icon(Icons.Default.SaveAlt, null); Spacer(Modifier.width(8.dp)); Text("Save PDF")
+                            }
+                            if (zipOutput != null) Button(onClick = { saveZip.launch(zipOutput!!.name) }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.SaveAlt, null); Spacer(Modifier.width(8.dp)); Text("Save image ZIP")
                             }
                         }
                     }
@@ -434,6 +453,32 @@ private fun PdfHome() {
         confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, (linkPage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add link") } },
         dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Cancel") } }
     )
+    if (showImageExportDialog) AlertDialog(
+        onDismissRequest = { showImageExportDialog = false },
+        title = { Text("Export PDF pages as images") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = exportFirstPage, onValueChange = { exportFirstPage = it }, label = { Text("First page") }, singleLine = true)
+            OutlinedTextField(value = exportLastPage, onValueChange = { exportLastPage = it }, label = { Text("Last page") }, singleLine = true)
+            OutlinedTextField(value = exportQuality, onValueChange = { exportQuality = it }, label = { Text("JPEG quality (40–95)") }, singleLine = true)
+            OutlinedTextField(value = exportMaxDimension, onValueChange = { exportMaxDimension = it }, label = { Text("Maximum image dimension (800–4000 px)") }, singleLine = true)
+            Text("Each page is rendered separately to limit memory use. The ZIP contains one JPEG per page.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(enabled = !busy, onClick = {
+            val uri = selected.singleOrNull()
+            val first = exportFirstPage.toIntOrNull() ?: 0
+            val last = exportLastPage.toIntOrNull() ?: 0
+            val quality = exportQuality.toIntOrNull() ?: 0
+            val dimension = exportMaxDimension.toIntOrNull() ?: 0
+            showImageExportDialog = false
+            if (uri != null) {
+                runOperation("Exporting PDF pages to images") {
+                    engine.exportPagesAsImages(uri, first, last, quality, dimension).also { zipOutput = it }
+                }
+            }
+        }) { Text("Export images") } },
+        dismissButton = { TextButton(onClick = { showImageExportDialog = false }) { Text("Cancel") } }
+    )
+
     if (showCompressionDialog) AlertDialog(
         onDismissRequest = { showCompressionDialog = false },
         title = { Text("Compress PDF") },
