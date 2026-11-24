@@ -307,13 +307,18 @@ private fun PdfHome() {
                 if (uri == null) Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text("Open a PDF to view it.") }
                 else Column(Modifier.fillMaxSize().padding(padding)) {
                     var zoom by remember(uri) { mutableFloatStateOf(1f) }
-                    val zoomState = rememberTransformableState { zoomChange, _, _ -> zoom = (zoom * zoomChange).coerceIn(1f, 4f) }
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("$pageCount pages · ${(zoom * 100).toInt()}%", color = Ink, fontWeight = FontWeight.SemiBold)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { zoom = 1f }) { Text("Reset zoom") }
-                            TextButton(onClick = { screen = PdfScreen.ORGANIZER }) { Icon(Icons.Default.GridView, null); Spacer(Modifier.width(6.dp)); Text("Organize") }
-                        }
+                    var pan by remember(uri) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+                    val zoomState = rememberTransformableState { zoomChange, panChange, _ ->
+                        val nextZoom = (zoom * zoomChange).coerceIn(0.5f, 5f)
+                        zoom = nextZoom
+                        pan = if (nextZoom <= 1.001f) androidx.compose.ui.geometry.Offset.Zero else pan + panChange
+                    }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("$pageCount pages · ${(zoom * 100).toInt()}%", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(0.5f); if (zoom <= 1.001f) pan = androidx.compose.ui.geometry.Offset.Zero }, enabled = zoom > 1.001f) { Icon(Icons.Default.Remove, "Zoom out") }
+                        IconButton(onClick = { zoom = (zoom * 1.25f).coerceAtMost(5f) }) { Icon(Icons.Default.Add, "Zoom in") }
+                        TextButton(onClick = { zoom = 1f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit width") }
+                        TextButton(onClick = { zoom = 0.85f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit page") }
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
@@ -342,7 +347,24 @@ private fun PdfHome() {
                         }) { Icon(Icons.Default.EditNote, null); Text("Fill form") }
 
                     }
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth()
+                            .transformable(zoomState)
+                            .pointerInput(zoom) {
+                                androidx.compose.foundation.gestures.detectTapGestures(onDoubleTap = {
+                                    zoom = if (zoom > 1.01f) 1f else 2f
+                                    pan = androidx.compose.ui.geometry.Offset.Zero
+                                })
+                            }
+                            .graphicsLayer {
+                                scaleX = zoom
+                                scaleY = zoom
+                                translationX = pan.x
+                                translationY = pan.y
+                            },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
                         itemsIndexed((0 until pageCount).toList()) { index, _ ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 PdfPagePreview(uri, index, 1400, Modifier.fillMaxWidth())
@@ -350,14 +372,16 @@ private fun PdfHome() {
                             }
                         }
                     }
-                    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Editor result", color = Ink, fontWeight = FontWeight.SemiBold)
-                                Text(message, color = Color.Gray, fontSize = 11.sp, maxLines = 2)
+                    if (busy || output != null || message != "Your documents stay on this device during processing.") {
+                        Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(if (output != null) "Editor result · ready to save" else "Editor status", color = Ink, fontWeight = FontWeight.SemiBold)
+                                    Text(message, color = Color.Gray, fontSize = 11.sp, maxLines = 2)
+                                }
+                                if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                                if (output != null) TextButton(onClick = { saveFile.launch(output!!.name) }) { Icon(Icons.Default.SaveAlt, null); Text("Save") }
                             }
-                            if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                            if (output != null) TextButton(onClick = { saveFile.launch(output!!.name) }) { Icon(Icons.Default.SaveAlt, null); Text("Save") }
                         }
                     }
                 }
