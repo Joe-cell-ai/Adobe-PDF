@@ -11,6 +11,8 @@ A privacy-first, open-source native Android PDF workspace built from scratch.
 - Local PDF merge, first-page extraction and rotate-all-pages tools
 - PDF editor overlays: add text, insert an image, add a highlight rectangle and add a typed italic signature
 - Offline OCR using the bundled ML Kit Latin text model; create a searchable PDF by adding an invisible text layer to scanned pages
+- Convert multiple images into a multi-page PDF
+- Compress image-heavy PDFs by rendering pages to JPEG and rebuilding a smaller PDF
 - Edited files are exported as separate PDFs; the source document is not overwritten
 - No account or cloud upload is required for these local operations
 
@@ -23,7 +25,7 @@ Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run t
 - Free-position editing controls and page-specific editor selection
 - Drawn signatures, richer annotations, stamps and links
 - OCR for additional scripts/languages and improved text positioning
-- Image/PDF conversions and compression
+- Additional conversion formats (PDF to image, Office formats) and non-destructive compression that preserves selectable text and vector graphics
 - Forms, metadata, document security and redaction
 - Accessibility, dark theme, large-file testing and release hardening
 
@@ -33,4 +35,4 @@ Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run t
 - [BentoPDF](https://www.bentopdf.com/) — local-first tool collection and page workflows
 - [Sejda PDF Editor](https://www.sejda.com/pdf-editor) — document editing, annotations, forms and signatures
 
-These products are feature references, not bundled source code, branding or assets. This project is independently implemented. Review third-party library licences and attribution requirements before redistribution.
+Compression currently rasterises page content, so selectable text, vector graphics and form elements are not preserved in the compressed copy. Keep the original when those properties matter. These products are feature references, not bundled source code, branding or assets. This project is independently implemented. Review third-party library licences and attribution requirements before redistribution.
