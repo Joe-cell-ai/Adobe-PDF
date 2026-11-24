@@ -170,18 +170,29 @@ private fun PdfHome() {
         scope.launch {
             busy = true
             message = "$label…"
+            var beforeSnapshot: File? = null
             try {
-                val hadOpenDocument = activeUri != null
+                val beforeUri = activeUri
+                if (beforeUri != null) {
+                    beforeSnapshot = withContext(Dispatchers.IO) {
+                        val snapshot = File(context.cacheDir, "pdf_history_" + System.nanoTime() + "_before.pdf")
+                        val input = if (beforeUri.scheme == "file") File(beforeUri.path ?: error("Invalid draft path.")).inputStream() else context.contentResolver.openInputStream(beforeUri) ?: error("Cannot snapshot PDF.")
+                        input.use { source -> snapshot.outputStream().use { target -> source.copyTo(target) } }
+                        snapshot
+                    }
+                }
                 val result = withContext(Dispatchers.IO) { task() }
+                if (beforeSnapshot != null) { editHistory.record(beforeSnapshot!!, result, label); historyRevision++ }
                 output = result
-                // Keep editor operations chained: the next operation in the
-                // viewer starts from this immutable draft, never the original.
-                if (hadOpenDocument) activeUri = Uri.fromFile(result)
-                message = "$label completed. Save the new PDF to keep the changes."
-            } catch (e: Exception) { message = e.message ?: "$label failed." }
+                if (beforeUri != null) activeUri = Uri.fromFile(result)
+                message = "$label completed. Undo is available; save the PDF to keep changes."
+            } catch (e: Exception) { beforeSnapshot?.delete(); message = e.message ?: "$label failed." }
             finally { busy = false }
         }
     }
+
+    fun undoEdit() { val restored = editHistory.undo() ?: return; historyRevision++; activeUri = Uri.fromFile(restored); output = restored; message = "Undo restored the previous PDF snapshot." }
+    fun redoEdit() { val restored = editHistory.redo() ?: return; historyRevision++; activeUri = Uri.fromFile(restored); output = restored; message = "Redo restored the edited PDF snapshot." }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
         val documentUri = activeUri
