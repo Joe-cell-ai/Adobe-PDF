@@ -70,6 +70,14 @@ private fun PdfHome() {
     var showTextDialog by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
     var signatureText by remember { mutableStateOf("") }
+    var signaturePage by remember { mutableStateOf("1") }
+    var notePage by remember { mutableStateOf("1") }
+    var linkPage by remember { mutableStateOf("1") }
+    var imagePage by remember { mutableStateOf("1") }
+    var imageX by remember { mutableStateOf("29") }
+    var imageY by remember { mutableStateOf("30") }
+    var imageWidth by remember { mutableStateOf("42") }
+    var showImagePlacementDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
     var noteText by remember { mutableStateOf("") }
     var showLinkDialog by remember { mutableStateOf(false) }
@@ -147,7 +155,11 @@ private fun PdfHome() {
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
         val documentUri = activeUri
-        if (imageUri != null && documentUri != null) runOperation("Inserting image") { engine.insertImage(documentUri, imageUri, 0) }
+        if (imageUri != null && documentUri != null) runOperation("Inserting image") {
+            engine.insertImage(documentUri, imageUri, (imagePage.toIntOrNull() ?: 1) - 1,
+                (imageX.toFloatOrNull() ?: 29f) / 100f, (imageY.toFloatOrNull() ?: 30f) / 100f,
+                (imageWidth.toFloatOrNull() ?: 42f) / 100f)
+        }
     }
 
     val pickImagesForPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { imageUris ->
@@ -264,7 +276,7 @@ private fun PdfHome() {
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
-                        OutlinedButton(enabled = !busy, onClick = { pickImage.launch("image/*") }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
+                        OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Adding highlight") { engine.addHighlight(uri, 0) } }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
                         OutlinedButton(enabled = !busy, onClick = { showSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Signature") }
                         OutlinedButton(enabled = !busy, onClick = { showNoteDialog = true }) { Icon(Icons.Default.Comment, null); Text("Note") }
@@ -390,9 +402,10 @@ private fun PdfHome() {
         title = { Text("Add note annotation") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value = noteText, onValueChange = { noteText = it }, label = { Text("Note") }, minLines = 3)
-            Text("Adds a PDF sticky-note annotation to page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = notePage, onValueChange = { notePage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Adds a PDF sticky-note annotation to the selected page.", color = Color.Gray, fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { showNoteDialog = false; activeUri?.let { uri -> runOperation("Adding note") { engine.addNoteAnnotation(uri, noteText, 0) } } }) { Text("Add note") } },
+        confirmButton = { TextButton(onClick = { showNoteDialog = false; activeUri?.let { uri -> runOperation("Adding note") { engine.addNoteAnnotation(uri, noteText, (notePage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add note") } },
         dismissButton = { TextButton(onClick = { showNoteDialog = false }) { Text("Cancel") } }
     )
     if (showLinkDialog) AlertDialog(
@@ -400,9 +413,10 @@ private fun PdfHome() {
         title = { Text("Add web link") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value = linkText, onValueChange = { linkText = it }, label = { Text("https:// address") }, singleLine = true)
-            Text("Adds a clickable link annotation to page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = linkPage, onValueChange = { linkPage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Adds a clickable link annotation to the selected page.", color = Color.Gray, fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, 0) } } }) { Text("Add link") } },
+        confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, (linkPage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add link") } },
         dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Cancel") } }
     )
     if (showMetadataDialog) AlertDialog(
@@ -434,7 +448,8 @@ private fun PdfHome() {
         onDismissRequest = { showDrawnSignatureDialog = false },
         title = { Text("Draw your signature") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Sign in the box below. The signature is added to page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = signaturePage, onValueChange = { signaturePage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Sign in the box below to add your signature to that page.", color = Color.Gray, fontSize = 12.sp)
             Canvas(
                 modifier = Modifier.fillMaxWidth().height(150.dp)
                     .background(Color(0xFFF7F9FF), RoundedCornerShape(10.dp))
@@ -463,10 +478,26 @@ private fun PdfHome() {
         confirmButton = { TextButton(enabled = signaturePoints.size > 1, onClick = {
             showDrawnSignatureDialog = false
             activeUri?.let { uri ->
-                runOperation("Adding handwritten signature") { engine.addDrawnSignature(uri, 0, signaturePoints) }
+                runOperation("Adding handwritten signature") { engine.addDrawnSignature(uri, (signaturePage.toIntOrNull() ?: 1) - 1, signaturePoints) }
             }
         }) { Text("Add signature") } },
         dismissButton = { TextButton(onClick = { showDrawnSignatureDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showImagePlacementDialog) AlertDialog(
+        onDismissRequest = { showImagePlacementDialog = false },
+        title = { Text("Place image on PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            OutlinedTextField(value = imagePage, onValueChange = { imagePage = it }, label = { Text("Page number") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = imageX, onValueChange = { imageX = it }, label = { Text("Left %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = imageY, onValueChange = { imageY = it }, label = { Text("Top %") }, modifier = Modifier.weight(1f))
+            }
+            OutlinedTextField(value = imageWidth, onValueChange = { imageWidth = it }, label = { Text("Image width %") }, singleLine = true)
+            Text("Choose the image next. Its aspect ratio is preserved; placement and size are measured from the page.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showImagePlacementDialog = false; pickImage.launch("image/*") }) { Text("Choose image") } },
+        dismissButton = { TextButton(onClick = { showImagePlacementDialog = false }) { Text("Cancel") } }
     )
 
     if (showPositionDialog) AlertDialog(
