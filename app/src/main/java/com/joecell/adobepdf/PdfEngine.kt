@@ -360,10 +360,10 @@ class PdfEngine(private val context: Context) {
         val document = openDocument(uri)
         try {
             document.documentInformation.apply {
-                if (title.isNotBlank()) this.title = title.take(250)
-                if (author.isNotBlank()) this.author = author.take(150)
-                if (subject.isNotBlank()) this.subject = subject.take(500)
-                if (keywords.isNotBlank()) this.keywords = keywords.take(500)
+                this.title = title.take(250)
+                this.author = author.take(150)
+                this.subject = subject.take(500)
+                this.keywords = keywords.take(500)
             }
             return saveEdited(document, "metadata")
         } finally { document.close() }
@@ -390,6 +390,110 @@ class PdfEngine(private val context: Context) {
             }
             document.protect(policy)
             return saveEdited(document, "protected")
+        } finally { document.close() }
+    }
+
+
+    /** Place text using normalized page coordinates (0..1, origin at top-left). */
+    fun addPositionedText(uri: Uri, text: String, pageIndex: Int, xRatio: Float, yRatio: Float, fontSize: Float = 16f): File {
+        require(text.isNotBlank()) { "Enter text to add." }
+        require(xRatio in 0f..1f && yRatio in 0f..1f) { "Position must be between 0 and 100 percent." }
+        require(fontSize in 6f..72f) { "Font size must be between 6 and 72 points." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            val box = page.mediaBox
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.beginText()
+                stream.setFont(PDType1Font.HELVETICA, fontSize)
+                stream.newLineAtOffset((box.width * xRatio).coerceIn(0f, box.width - 8f),
+                    (box.height * (1f - yRatio)).coerceIn(8f, box.height - 8f))
+                stream.showText(text.take(500))
+                stream.endText()
+            }
+            return saveEdited(document, "positioned_text")
+        } finally { document.close() }
+    }
+
+    /**
+     * Permanently redact a normalized rectangle by rasterizing every page and painting
+     * the target pixels black before rebuilding the PDF. This removes selectable text,
+     * vector objects, links, annotations and form fields from the output by design.
+     */
+    fun redactRegion(uri: Uri, pageIndex: Int, left: Float, top: Float, width: Float, height: Float): File {
+        require(pageIndex >= 0) { "Page index is invalid." }
+        require(left in 0f..1f && top in 0f..1f && width > 0f && height > 0f &&
+            left + width <= 1.001f && top + height <= 1.001f) { "Redaction area must fit inside the page." }
+        val source = openDocument(uri)
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: run { source.close(); error("Cannot open PDF for redaction.") }
+        val result = PDDocument()
+        try {
+            require(pageIndex < source.numberOfPages) { "Page not found." }
+            android.graphics.pdf.PdfRenderer(descriptor).use { renderer ->
+                require(renderer.pageCount == source.numberOfPages) { "PDF page count changed while opening." }
+                for (index in 0 until renderer.pageCount) {
+                    renderer.openPage(index).use { rendered ->
+                        val scale = minOf(1.5f, 1800f / maxOf(rendered.width, rendered.height))
+                        val bitmap = Bitmap.createBitmap(
+                            (rendered.width * scale).toInt().coerceAtLeast(1),
+                            (rendered.height * scale).toInt().coerceAtLeast(1),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            rendered.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                            if (index == pageIndex) {
+                                val paint = android.graphics.Paint().apply {
+                                    color = android.graphics.Color.BLACK
+                                    style = android.graphics.Paint.Style.FILL
+                                }
+                                android.graphics.Canvas(bitmap).drawRect(
+                                    left * bitmap.width, top * bitmap.height,
+                                    (left + width) * bitmap.width, (top + height) * bitmap.height, paint
+                                )
+                            }
+                            val bytes = ByteArrayOutputStream().use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                out.toByteArray()
+                            }
+                            val sourceBox = source.getPage(index).mediaBox
+                            val page = PDPage(PDRectangle(sourceBox.width, sourceBox.height))
+                            result.addPage(page)
+                            val image = PDImageXObject.createFromByteArray(result, bytes, "redacted_page_${index + 1}")
+                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, sourceBox.width, sourceBox.height) }
+                        } finally { bitmap.recycle() }
+                    }
+                }
+            }
+            result.documentInformation.title = source.documentInformation.title
+            return saveEdited(result, "redacted")
+        } finally {
+            result.close()
+            source.close()
+            descriptor.close()
+        }
+    }
+
+    /** Return editable AcroForm field names for the form-fill screen. */
+    fun listFormFields(uri: Uri): List<String> {
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: return emptyList()
+            return form.fields.mapNotNull { it.fullyQualifiedName }.sorted()
+        } finally { document.close() }
+    }
+
+    /** Fill a named AcroForm field and export a separate PDF copy. */
+    fun fillFormField(uri: Uri, fieldName: String, value: String): File {
+        require(fieldName.isNotBlank()) { "Choose a form field." }
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: error("This PDF has no interactive form.")
+            val field = form.getField(fieldName) ?: error("Form field not found.")
+            field.setValue(value)
+            return saveEdited(document, "form_filled")
         } finally { document.close() }
     }
 
