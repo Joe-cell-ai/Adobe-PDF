@@ -51,3 +51,44 @@ class PdfEditHistoryTest {
         assertNull(history.undo())
     }
 }
+
+
+    @Test fun discardedRedoBranchDeletesOnlyUnreferencedSnapshots() {
+        val original = pdf("original")
+        val first = pdf("first")
+        val second = pdf("second")
+        val alternate = pdf("alternate")
+        val history = PdfEditHistory()
+        history.record(original, first, "First")
+        history.record(first, second, "Second")
+        history.undo()
+
+        history.record(first, alternate, "Alternate")
+
+        assertTrue(original.isFile)
+        assertTrue(first.isFile)
+        assertFalse(second.exists())
+        assertTrue(alternate.isFile)
+        history.clear()
+        assertFalse(original.exists())
+        assertFalse(first.exists())
+        assertFalse(alternate.exists())
+    }
+
+    @Test fun evictingOldestEntryDeletesOnlyItsUnsharedSnapshot() {
+        val history = PdfEditHistory(maxEntries = 2)
+        val files = (0..3).map { pdf("evict$it") }
+        history.record(files[0], files[1], "1")
+        history.record(files[1], files[2], "2")
+        history.record(files[2], files[3], "3")
+
+        assertFalse(files[0].exists())
+        assertTrue(files[1].isFile)
+        assertTrue(files[2].isFile)
+        assertTrue(files[3].isFile)
+        history.clear()
+        assertTrue(files[0].exists().not())
+        assertFalse(files[1].exists())
+        assertFalse(files[2].exists())
+        assertFalse(files[3].exists())
+    }
