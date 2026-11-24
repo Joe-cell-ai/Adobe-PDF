@@ -286,7 +286,8 @@ class PdfEngine(private val context: Context) {
             PdfRenderer(descriptor).use { renderer ->
                 require(renderer.pageCount == source.numberOfPages) { "PDF page count changed while opening." }
                 for (index in 0 until renderer.pageCount) {
-                    renderer.openPage(index).use { rendered ->
+                    val rendered = renderer.openPage(index)
+                    try {
                         val scale = minOf(1.5f, 1800f / maxOf(rendered.width, rendered.height))
                         val bitmap = Bitmap.createBitmap(
                             (rendered.width * scale).toInt().coerceAtLeast(1),
@@ -306,7 +307,7 @@ class PdfEngine(private val context: Context) {
                             result.addPage(page)
                             PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, sourceBox.width, sourceBox.height) }
                         } finally { bitmap.recycle() }
-                    }
+                    } finally { rendered.close() }
                 }
             }
             return saveEdited(result, "compressed")
@@ -500,6 +501,12 @@ class PdfEngine(private val context: Context) {
     fun pageCount(uri: Uri): Int {
         val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
         return input.use { PDDocument.load(it).use { pdf -> pdf.numberOfPages } }
+    }
+
+    private fun saveEdited(document: PDDocument, prefix: String): File {
+        val output = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.pdf")
+        document.save(output)
+        return output
     }
 
     private fun openDocument(uri: Uri): PDDocument {
