@@ -10,6 +10,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -26,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -193,11 +196,16 @@ private fun PdfHome() {
                 val uri = activeUri
                 if (uri == null) Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text("Open a PDF to view it.") }
                 else Column(Modifier.fillMaxSize().padding(padding)) {
+                    var zoom by remember(uri) { mutableFloatStateOf(1f) }
+                    val zoomState = rememberTransformableState { zoomChange, _, _ -> zoom = (zoom * zoomChange).coerceIn(1f, 4f) }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("$pageCount pages", color = Ink, fontWeight = FontWeight.SemiBold)
-                        TextButton(onClick = { screen = PdfScreen.ORGANIZER }) { Icon(Icons.Default.GridView, null); Spacer(Modifier.width(6.dp)); Text("Organize") }
+                        Text("$pageCount pages · ${(zoom * 100).toInt()}%", color = Ink, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { zoom = 1f }) { Text("Reset zoom") }
+                            TextButton(onClick = { screen = PdfScreen.ORGANIZER }) { Icon(Icons.Default.GridView, null); Spacer(Modifier.width(6.dp)); Text("Organize") }
+                        }
                     }
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LazyColumn(Modifier.fillMaxSize().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed((0 until pageCount).toList()) { index, _ ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 PdfPagePreview(uri, index, 1400, Modifier.fillMaxWidth())
@@ -214,6 +222,9 @@ private fun PdfHome() {
                 else Column(Modifier.fillMaxSize().padding(padding)) {
                     Text("Select pages, then choose an action. Original file stays untouched.", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = !busy && pageOrder.isNotEmpty(), onClick = {
+                            runOperation("Applying page order") { engine.rebuild(uri, pageOrder.toList(), rotations.toMap()) }
+                        }) { Icon(Icons.Default.Save, null); Text("Apply order") }
                         OutlinedButton(enabled = selectedPages.isNotEmpty() && !busy, onClick = {
                             val removed = selectedPages.toSet()
                             val newOrder = pageOrder.filterNot { it in removed }
