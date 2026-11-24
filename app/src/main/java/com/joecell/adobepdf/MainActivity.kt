@@ -98,7 +98,7 @@ private fun PdfHome() {
     var formFieldNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var formFieldName by remember { mutableStateOf("") }
     var formFieldValue by remember { mutableStateOf("") }
-    var signaturePoints by remember { mutableStateOf<List<androidx.compose.ui.geometry.Offset>>(emptyList()) }
+    var signaturePoints by remember { mutableStateOf<List<Pair<Float, Float>>>(emptyList()) }
     var showDrawnSignatureDialog by remember { mutableStateOf(false) }
 
     val pageOrder = remember { mutableStateListOf<Int>() }
@@ -440,10 +440,10 @@ private fun PdfHome() {
                     .background(Color(0xFFF7F9FF), RoundedCornerShape(10.dp))
                     .pointerInput(Unit) {
                         detectDragGestures(
-                            onDragStart = { start -> signaturePoints = listOf(start) },
+                            onDragStart = { start -> signaturePoints = listOf((start.x / size.width).coerceIn(0f, 1f) to (start.y / size.height).coerceIn(0f, 1f)) },
                             onDrag = { change, _ ->
                                 change.consume()
-                                signaturePoints = signaturePoints + change.position
+                                signaturePoints = signaturePoints + ((change.position.x / size.width).coerceIn(0f, 1f) to (change.position.y / size.height).coerceIn(0f, 1f))
                             }
                         )
                     }
@@ -451,8 +451,8 @@ private fun PdfHome() {
                 for (i in 1 until signaturePoints.size) {
                     drawLine(
                         color = Color(0xFF192D55),
-                        start = signaturePoints[i - 1],
-                        end = signaturePoints[i],
+                        start = androidx.compose.ui.geometry.Offset(signaturePoints[i - 1].first * size.width, signaturePoints[i - 1].second * size.height),
+                        end = androidx.compose.ui.geometry.Offset(signaturePoints[i].first * size.width, signaturePoints[i].second * size.height),
                         strokeWidth = 3.5.dp.toPx(),
                         cap = androidx.compose.ui.graphics.StrokeCap.Round
                     )
@@ -463,10 +463,7 @@ private fun PdfHome() {
         confirmButton = { TextButton(enabled = signaturePoints.size > 1, onClick = {
             showDrawnSignatureDialog = false
             activeUri?.let { uri ->
-                val normalized = signaturePoints.map { point ->
-                    (point.x / 1000f).coerceIn(0f, 1f) to (point.y / 450f).coerceIn(0f, 1f)
-                }
-                runOperation("Adding handwritten signature") { engine.addDrawnSignature(uri, 0, normalized) }
+                runOperation("Adding handwritten signature") { engine.addDrawnSignature(uri, 0, signaturePoints) }
             }
         }) { Text("Add signature") } },
         dismissButton = { TextButton(onClick = { showDrawnSignatureDialog = false }) { Text("Cancel") } }
