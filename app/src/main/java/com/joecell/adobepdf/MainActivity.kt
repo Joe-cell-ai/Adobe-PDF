@@ -337,8 +337,8 @@ private fun PdfHome() {
                         TextButton(onClick = { zoom = 0.85f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit page") }
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(enabled = !busy && editHistory.canUndo, onClick = { undoEdit() }) { Icon(Icons.Default.Undo, null); Text("Undo") }
-                        OutlinedButton(enabled = !busy && editHistory.canRedo, onClick = { redoEdit() }) { Icon(Icons.Default.Redo, null); Text("Redo") }
+                        OutlinedButton(enabled = !busy && historyRevision >= 0 && editHistory.canUndo, onClick = { undoEdit() }) { Icon(Icons.Default.Undo, null); Text("Undo") }
+                        OutlinedButton(enabled = !busy && historyRevision >= 0 && editHistory.canRedo, onClick = { redoEdit() }) { Icon(Icons.Default.Redo, null); Text("Redo") }
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
                         OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
                         OutlinedButton(enabled = !busy, onClick = { showHighlightDialog = true }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
