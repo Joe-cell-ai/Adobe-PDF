@@ -90,4 +90,19 @@ class PdfEditHistoryTest {
         assertFalse(files[2].exists())
         assertFalse(files[3].exists())
     }
+
+    @Test fun clearingHistoryPreservesTheActiveDraft() {
+        val original = pdf("preserveOriginal")
+        val activeDraft = pdf("activeDraft")
+        val history = PdfEditHistory()
+        history.record(original, activeDraft, "Edit")
+
+        history.clear(setOf(activeDraft))
+
+        assertFalse(history.canUndo)
+        assertEquals(0, history.size)
+        assertFalse(original.exists())
+        assertTrue(activeDraft.isFile)
+        activeDraft.delete()
+    }
 }
