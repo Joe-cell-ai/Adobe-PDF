@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,11 +65,23 @@ private fun PdfHome() {
     var message by remember { mutableStateOf("Your documents stay on this device during processing.") }
     var busy by remember { mutableStateOf(false) }
     var output by remember { mutableStateOf<File?>(null) }
+    var compressionQuality by remember { mutableFloatStateOf(68f) }
+    var showCompressionDialog by remember { mutableStateOf(false) }
     var textToAdd by remember { mutableStateOf("Approved") }
     var pageCount by remember { mutableIntStateOf(0) }
     var showTextDialog by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
     var signatureText by remember { mutableStateOf("") }
+    var signaturePage by remember { mutableStateOf("1") }
+    var notePage by remember { mutableStateOf("1") }
+    var highlightPage by remember { mutableStateOf("1") }
+    var showHighlightDialog by remember { mutableStateOf(false) }
+    var linkPage by remember { mutableStateOf("1") }
+    var imagePage by remember { mutableStateOf("1") }
+    var imageX by remember { mutableStateOf("29") }
+    var imageY by remember { mutableStateOf("30") }
+    var imageWidth by remember { mutableStateOf("42") }
+    var showImagePlacementDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
     var noteText by remember { mutableStateOf("") }
     var showLinkDialog by remember { mutableStateOf(false) }
@@ -79,6 +94,25 @@ private fun PdfHome() {
     var showProtectDialog by remember { mutableStateOf(false) }
     var userPassword by remember { mutableStateOf("") }
     var ownerPassword by remember { mutableStateOf("") }
+
+    var showPositionDialog by remember { mutableStateOf(false) }
+    var positionX by remember { mutableStateOf("10") }
+    var positionY by remember { mutableStateOf("15") }
+    var positionPage by remember { mutableStateOf("1") }
+    var positionFontSize by remember { mutableStateOf("16") }
+    var showRedactDialog by remember { mutableStateOf(false) }
+    var redactLeft by remember { mutableStateOf("25") }
+    var redactTop by remember { mutableStateOf("25") }
+    var redactWidth by remember { mutableStateOf("35") }
+    var redactHeight by remember { mutableStateOf("12") }
+    var redactPage by remember { mutableStateOf("1") }
+    var showFormDialog by remember { mutableStateOf(false) }
+    var formFieldNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    var formFieldName by remember { mutableStateOf("") }
+    var formFieldValue by remember { mutableStateOf("") }
+    var signaturePoints by remember { mutableStateOf<List<Pair<Float, Float>>>(emptyList()) }
+    var showDrawnSignatureDialog by remember { mutableStateOf(false) }
+
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
     val rotations = remember { mutableStateMapOf<Int, Int>() }
@@ -125,7 +159,11 @@ private fun PdfHome() {
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
         val documentUri = activeUri
-        if (imageUri != null && documentUri != null) runOperation("Inserting image") { engine.insertImage(documentUri, imageUri, 0) }
+        if (imageUri != null && documentUri != null) runOperation("Inserting image") {
+            engine.insertImage(documentUri, imageUri, (imagePage.toIntOrNull() ?: 1) - 1,
+                (imageX.toFloatOrNull() ?: 29f) / 100f, (imageY.toFloatOrNull() ?: 30f) / 100f,
+                (imageWidth.toFloatOrNull() ?: 42f) / 100f)
+        }
     }
 
     val pickImagesForPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { imageUris ->
@@ -200,8 +238,8 @@ private fun PdfHome() {
                     runOperation("Rotating pages") { engine.rotateAllPages(selected.first()) }
                 } }
                 item { ToolCard("Add text", "Place a text label on the first page", Icons.Default.Edit, selected.size != 1 || busy) { showTextDialog = true } }
-                item { ToolCard("Compress PDF", "Reduce file size by optimising page images; flattens text and vector content", Icons.Default.Compress, selected.size != 1 || busy) {
-                    runOperation("Compressing PDF") { engine.compressPdf(selected.first()) }
+                item { ToolCard("Compress PDF", "Choose image quality and reduce file size; output is flattened", Icons.Default.Compress, selected.size != 1 || busy) {
+                    showCompressionDialog = true
                 } }
                 item { ToolCard("Images to PDF", "Combine photos and images into a multi-page PDF", Icons.Default.Collections, busy) {
                     pickImagesForPdf.launch("image/*")
@@ -242,12 +280,30 @@ private fun PdfHome() {
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
-                        OutlinedButton(enabled = !busy, onClick = { pickImage.launch("image/*") }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
-                        OutlinedButton(enabled = !busy, onClick = { runOperation("Adding highlight") { engine.addHighlight(uri, 0) } }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
+                        OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
+                        OutlinedButton(enabled = !busy, onClick = { showHighlightDialog = true }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
                         OutlinedButton(enabled = !busy, onClick = { showSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Signature") }
                         OutlinedButton(enabled = !busy, onClick = { showNoteDialog = true }) { Icon(Icons.Default.Comment, null); Text("Note") }
                         OutlinedButton(enabled = !busy, onClick = { showLinkDialog = true }) { Icon(Icons.Default.Link, null); Text("Link") }
                         OutlinedButton(enabled = !busy, onClick = { runOperation("Creating searchable PDF") { engine.createSearchablePdf(uri) } }) { Icon(Icons.Default.Search, null); Text("OCR") }
+
+                        OutlinedButton(enabled = !busy, onClick = { showPositionDialog = true }) { Icon(Icons.Default.OpenWith, null); Text("Position text") }
+                        OutlinedButton(enabled = !busy, onClick = { signaturePoints = emptyList(); showDrawnSignatureDialog = true }) { Icon(Icons.Default.Draw, null); Text("Draw signature") }
+                        OutlinedButton(enabled = !busy, onClick = { showRedactDialog = true }) { Icon(Icons.Default.Block, null); Text("Redact") }
+                        OutlinedButton(enabled = !busy, onClick = {
+                            scope.launch {
+                                busy = true
+                                try {
+                                    formFieldNames = withContext(Dispatchers.IO) { engine.listFormFields(uri) }
+                                    formFieldName = formFieldNames.firstOrNull().orEmpty()
+                                    formFieldValue = ""
+                                    showFormDialog = true
+                                    if (formFieldNames.isEmpty()) message = "This PDF does not contain editable AcroForm fields."
+                                } catch (e: Exception) { message = e.message ?: "Could not inspect form fields." }
+                                finally { busy = false }
+                            }
+                        }) { Icon(Icons.Default.EditNote, null); Text("Fill form") }
+
                     }
                     LazyColumn(Modifier.weight(1f).fillMaxWidth().transformable(zoomState).graphicsLayer(scaleX = zoom, scaleY = zoom), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed((0 until pageCount).toList()) { index, _ ->
@@ -345,14 +401,26 @@ private fun PdfHome() {
         dismissButton = { TextButton(onClick = { showTextDialog = false }) { Text("Cancel") } }
     )
 
+    if (showHighlightDialog) AlertDialog(
+        onDismissRequest = { showHighlightDialog = false },
+        title = { Text("Add highlight") },
+        text = { OutlinedTextField(value = highlightPage, onValueChange = { highlightPage = it }, label = { Text("Page number") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = {
+            showHighlightDialog = false
+            activeUri?.let { uri -> runOperation("Adding highlight") { engine.addHighlight(uri, (highlightPage.toIntOrNull() ?: 1) - 1) } }
+        }) { Text("Add highlight") } },
+        dismissButton = { TextButton(onClick = { showHighlightDialog = false }) { Text("Cancel") } }
+    )
+
     if (showNoteDialog) AlertDialog(
         onDismissRequest = { showNoteDialog = false },
         title = { Text("Add note annotation") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value = noteText, onValueChange = { noteText = it }, label = { Text("Note") }, minLines = 3)
-            Text("Adds a PDF sticky-note annotation to page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = notePage, onValueChange = { notePage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Adds a PDF sticky-note annotation to the selected page.", color = Color.Gray, fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { showNoteDialog = false; activeUri?.let { uri -> runOperation("Adding note") { engine.addNoteAnnotation(uri, noteText, 0) } } }) { Text("Add note") } },
+        confirmButton = { TextButton(onClick = { showNoteDialog = false; activeUri?.let { uri -> runOperation("Adding note") { engine.addNoteAnnotation(uri, noteText, (notePage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add note") } },
         dismissButton = { TextButton(onClick = { showNoteDialog = false }) { Text("Cancel") } }
     )
     if (showLinkDialog) AlertDialog(
@@ -360,11 +428,27 @@ private fun PdfHome() {
         title = { Text("Add web link") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value = linkText, onValueChange = { linkText = it }, label = { Text("https:// address") }, singleLine = true)
-            Text("Adds a clickable link annotation to page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = linkPage, onValueChange = { linkPage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Adds a clickable link annotation to the selected page.", color = Color.Gray, fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, 0) } } }) { Text("Add link") } },
+        confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, (linkPage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add link") } },
         dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Cancel") } }
     )
+    if (showCompressionDialog) AlertDialog(
+        onDismissRequest = { showCompressionDialog = false },
+        title = { Text("Compress PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("JPEG quality: ${compressionQuality.toInt()}%", fontWeight = FontWeight.SemiBold)
+            Slider(value = compressionQuality, onValueChange = { compressionQuality = it }, valueRange = 35f..90f, steps = 10)
+            Text("Lower quality usually creates a smaller file. This mode rasterizes pages, so selectable text, vector graphics, forms, links and annotations are not preserved.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showCompressionDialog = false
+            selected.firstOrNull()?.let { uri -> runOperation("Compressing PDF") { engine.compressPdf(uri, compressionQuality.toInt()) } }
+        }) { Text("Compress") } },
+        dismissButton = { TextButton(onClick = { showCompressionDialog = false }) { Text("Cancel") } }
+    )
+
     if (showMetadataDialog) AlertDialog(
         onDismissRequest = { showMetadataDialog = false },
         title = { Text("PDF document properties") },
@@ -389,16 +473,190 @@ private fun PdfHome() {
         dismissButton = { TextButton(onClick = { showProtectDialog = false }) { Text("Cancel") } }
     )
 
+
+    if (showDrawnSignatureDialog) AlertDialog(
+        onDismissRequest = { showDrawnSignatureDialog = false },
+        title = { Text("Draw your signature") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = signaturePage, onValueChange = { signaturePage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Sign in the box below to add your signature to that page.", color = Color.Gray, fontSize = 12.sp)
+            Canvas(
+                modifier = Modifier.fillMaxWidth().height(150.dp)
+                    .background(Color(0xFFF7F9FF), RoundedCornerShape(10.dp))
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { start -> signaturePoints = listOf((start.x / size.width).coerceIn(0f, 1f) to (start.y / size.height).coerceIn(0f, 1f)) },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                signaturePoints = signaturePoints + ((change.position.x / size.width).coerceIn(0f, 1f) to (change.position.y / size.height).coerceIn(0f, 1f))
+                            }
+                        )
+                    }
+            ) {
+                for (i in 1 until signaturePoints.size) {
+                    drawLine(
+                        color = Color(0xFF192D55),
+                        start = androidx.compose.ui.geometry.Offset(signaturePoints[i - 1].first * size.width, signaturePoints[i - 1].second * size.height),
+                        end = androidx.compose.ui.geometry.Offset(signaturePoints[i].first * size.width, signaturePoints[i].second * size.height),
+                        strokeWidth = 3.5.dp.toPx(),
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                }
+            }
+            TextButton(onClick = { signaturePoints = emptyList() }) { Text("Clear signature") }
+        } },
+        confirmButton = { TextButton(enabled = signaturePoints.size > 1, onClick = {
+            showDrawnSignatureDialog = false
+            activeUri?.let { uri ->
+                runOperation("Adding handwritten signature") { engine.addDrawnSignature(uri, (signaturePage.toIntOrNull() ?: 1) - 1, signaturePoints) }
+            }
+        }) { Text("Add signature") } },
+        dismissButton = { TextButton(onClick = { showDrawnSignatureDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showImagePlacementDialog) AlertDialog(
+        onDismissRequest = { showImagePlacementDialog = false },
+        title = { Text("Place image on PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            PositionPicker(
+                x = (imageX.toFloatOrNull() ?: 29f) / 100f,
+                y = (imageY.toFloatOrNull() ?: 30f) / 100f,
+                onPositionChange = { x, y -> imageX = (x * 100).toInt().toString(); imageY = (y * 100).toInt().toString() }
+            )
+            OutlinedTextField(value = imagePage, onValueChange = { imagePage = it }, label = { Text("Page number") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = imageX, onValueChange = { imageX = it }, label = { Text("Left %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = imageY, onValueChange = { imageY = it }, label = { Text("Top %") }, modifier = Modifier.weight(1f))
+            }
+            OutlinedTextField(value = imageWidth, onValueChange = { imageWidth = it }, label = { Text("Image width %") }, singleLine = true)
+            Text("Choose the image next. Its aspect ratio is preserved; placement and size are measured from the page.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showImagePlacementDialog = false; pickImage.launch("image/*") }) { Text("Choose image") } },
+        dismissButton = { TextButton(onClick = { showImagePlacementDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showPositionDialog) AlertDialog(
+        onDismissRequest = { showPositionDialog = false },
+        title = { Text("Position text on a page") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = textToAdd, onValueChange = { textToAdd = it }, label = { Text("Text") })
+            PositionPicker(
+                x = (positionX.toFloatOrNull() ?: 10f) / 100f,
+                y = (positionY.toFloatOrNull() ?: 15f) / 100f,
+                onPositionChange = { x, y -> positionX = (x * 100).toInt().toString(); positionY = (y * 100).toInt().toString() }
+            )
+            OutlinedTextField(value = positionPage, onValueChange = { positionPage = it }, label = { Text("Page number") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = positionX, onValueChange = { positionX = it }, label = { Text("X %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = positionY, onValueChange = { positionY = it }, label = { Text("Y %") }, modifier = Modifier.weight(1f))
+            }
+            OutlinedTextField(value = positionFontSize, onValueChange = { positionFontSize = it }, label = { Text("Font size (pt)") }, singleLine = true)
+            Text("Coordinates are percentages measured from the page's top-left corner.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showPositionDialog = false
+            activeUri?.let { uri ->
+                runOperation("Placing text") {
+                    engine.addPositionedText(uri, textToAdd, (positionPage.toIntOrNull() ?: 1) - 1,
+                        (positionX.toFloatOrNull() ?: 10f) / 100f, (positionY.toFloatOrNull() ?: 15f) / 100f,
+                        positionFontSize.toFloatOrNull() ?: 16f)
+                }
+            }
+        }) { Text("Place text") } },
+        dismissButton = { TextButton(onClick = { showPositionDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showRedactDialog) AlertDialog(
+        onDismissRequest = { showRedactDialog = false },
+        title = { Text("Permanently redact a region") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(value = redactPage, onValueChange = { redactPage = it }, label = { Text("Page number") }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = redactLeft, onValueChange = { redactLeft = it }, label = { Text("Left %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = redactTop, onValueChange = { redactTop = it }, label = { Text("Top %") }, modifier = Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = redactWidth, onValueChange = { redactWidth = it }, label = { Text("Width %") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = redactHeight, onValueChange = { redactHeight = it }, label = { Text("Height %") }, modifier = Modifier.weight(1f))
+            }
+            Text("Warning: creates a flattened, image-based PDF. The selected page's underlying text and objects are removed, and form fields, links and annotations are not retained.", color = Color(0xFFB3261E), fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showRedactDialog = false
+            activeUri?.let { uri ->
+                runOperation("Applying permanent redaction") {
+                    engine.redactRegion(uri, (redactPage.toIntOrNull() ?: 1) - 1,
+                        (redactLeft.toFloatOrNull() ?: 25f) / 100f, (redactTop.toFloatOrNull() ?: 25f) / 100f,
+                        (redactWidth.toFloatOrNull() ?: 35f) / 100f, (redactHeight.toFloatOrNull() ?: 12f) / 100f)
+                }
+            }
+        }) { Text("Redact permanently") } },
+        dismissButton = { TextButton(onClick = { showRedactDialog = false }) { Text("Cancel") } }
+    )
+
+    if (showFormDialog) AlertDialog(
+        onDismissRequest = { showFormDialog = false },
+        title = { Text("Fill PDF form") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (formFieldNames.isNotEmpty()) {
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    OutlinedTextField(value = formFieldName, onValueChange = {}, readOnly = true, label = { Text("Form field") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth())
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        formFieldNames.forEach { name -> DropdownMenuItem(text = { Text(name) }, onClick = { formFieldName = name; expanded = false }) }
+                    }
+                }
+                OutlinedTextField(value = formFieldValue, onValueChange = { formFieldValue = it }, label = { Text("Value") })
+            } else Text("No editable AcroForm fields were found in this document.")
+        } },
+        confirmButton = { TextButton(enabled = formFieldName.isNotBlank() && formFieldValue.isNotEmpty(), onClick = {
+            showFormDialog = false
+            activeUri?.let { uri -> runOperation("Filling PDF form") { engine.fillFormField(uri, formFieldName, formFieldValue) } }
+        }) { Text("Apply value") } },
+        dismissButton = { TextButton(onClick = { showFormDialog = false }) { Text("Close") } }
+    )
+
     if (showSignatureDialog) AlertDialog(
         onDismissRequest = { showSignatureDialog = false },
         title = { Text("Add typed signature") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value = signatureText, onValueChange = { signatureText = it }, label = { Text("Name or signature text") }, singleLine = true)
-            Text("Adds an italic signature near the bottom of page 1.", color = Color.Gray, fontSize = 12.sp)
+            OutlinedTextField(value = signaturePage, onValueChange = { signaturePage = it }, label = { Text("Page number") }, singleLine = true)
+            Text("Adds an italic signature near the bottom of the selected page.", color = Color.Gray, fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { showSignatureDialog = false; activeUri?.let { uri -> runOperation("Adding signature") { engine.addTypedSignature(uri, signatureText, 0) } } }) { Text("Add signature") } },
+        confirmButton = { TextButton(onClick = { showSignatureDialog = false; activeUri?.let { uri -> runOperation("Adding signature") { engine.addTypedSignature(uri, signatureText, (signaturePage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add signature") } },
         dismissButton = { TextButton(onClick = { showSignatureDialog = false }) { Text("Cancel") } }
     )
+}
+
+@Composable
+private fun PositionPicker(x: Float, y: Float, onPositionChange: (Float, Float) -> Unit) {
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier.fillMaxWidth().height(116.dp)
+            .background(Color(0xFFF1F4FC), RoundedCornerShape(10.dp))
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { point ->
+                        onPositionChange((point.x / size.width).coerceIn(0f, 1f), (point.y / size.height).coerceIn(0f, 1f))
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        onPositionChange((change.position.x / size.width).coerceIn(0f, 1f), (change.position.y / size.height).coerceIn(0f, 1f))
+                    }
+                )
+            }
+    ) {
+        drawRoundRect(color = Color.White, topLeft = androidx.compose.ui.geometry.Offset(size.width * 0.06f, size.height * 0.08f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.88f, size.height * 0.84f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
+        val px = size.width * (0.06f + x.coerceIn(0f, 1f) * 0.88f)
+        val py = size.height * (0.08f + y.coerceIn(0f, 1f) * 0.84f)
+        drawCircle(Accent, radius = 8.dp.toPx(), center = androidx.compose.ui.geometry.Offset(px, py))
+        drawLine(Accent.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(px - 14.dp.toPx(), py), androidx.compose.ui.geometry.Offset(px + 14.dp.toPx(), py), strokeWidth = 1.dp.toPx())
+        drawLine(Accent.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(px, py - 14.dp.toPx()), androidx.compose.ui.geometry.Offset(px, py + 14.dp.toPx()), strokeWidth = 1.dp.toPx())
+    }
+    Text("Drag the marker to position. Set image width below to resize.", color = Color.Gray, fontSize = 11.sp)
 }
 
 @Composable

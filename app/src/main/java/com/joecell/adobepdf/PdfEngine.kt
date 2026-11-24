@@ -115,7 +115,7 @@ class PdfEngine(private val context: Context) {
         require(text.isNotBlank()) { "Enter text to add." }
         val document = openDocument(uri)
         try {
-            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            PdfEditorValidation.requirePageIndex(pageIndex, document.numberOfPages)
             val page = document.getPage(pageIndex)
             PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
                 stream.beginText()
@@ -128,7 +128,12 @@ class PdfEngine(private val context: Context) {
         } finally { document.close() }
     }
 
-    fun insertImage(uri: Uri, imageUri: Uri, pageIndex: Int = 0): File {
+    fun insertImage(
+        uri: Uri, imageUri: Uri, pageIndex: Int = 0,
+        xRatio: Float = 0.29f, yRatio: Float = 0.30f, widthRatio: Float = 0.42f
+    ): File {
+        PdfEditorValidation.requireNormalizedPoint(xRatio, yRatio)
+        require(widthRatio.isFinite() && widthRatio in 0.02f..1f) { "Image width must be between 2 and 100 percent." }
         val document = openDocument(uri)
         try {
             require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
@@ -137,11 +142,15 @@ class PdfEngine(private val context: Context) {
             try {
                 val image = LosslessFactory.createFromImage(document, bitmap)
                 val page = document.getPage(pageIndex)
-                val scale = minOf(page.mediaBox.width * 0.42f / image.width, page.mediaBox.height * 0.32f / image.height, 1f)
+                val box = page.mediaBox
+                val targetWidth = box.width * widthRatio
+                val scale = minOf(targetWidth / image.width, (box.height * 0.8f) / image.height)
                 val width = image.width * scale
                 val height = image.height * scale
+                val x = (box.width * xRatio).coerceIn(0f, box.width - width)
+                val yTop = (box.height * yRatio).coerceIn(0f, box.height - height)
                 PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use {
-                    it.drawImage(image, (page.mediaBox.width - width) / 2f, (page.mediaBox.height - height) / 2f, width, height)
+                    it.drawImage(image, x, box.height - yTop - height, width, height)
                 }
             } finally { bitmap.recycle() }
             return saveEdited(document, "image")
@@ -286,7 +295,8 @@ class PdfEngine(private val context: Context) {
             PdfRenderer(descriptor).use { renderer ->
                 require(renderer.pageCount == source.numberOfPages) { "PDF page count changed while opening." }
                 for (index in 0 until renderer.pageCount) {
-                    renderer.openPage(index).use { rendered ->
+                    val rendered = renderer.openPage(index)
+                    try {
                         val scale = minOf(1.5f, 1800f / maxOf(rendered.width, rendered.height))
                         val bitmap = Bitmap.createBitmap(
                             (rendered.width * scale).toInt().coerceAtLeast(1),
@@ -301,12 +311,15 @@ class PdfEngine(private val context: Context) {
                                 out.toByteArray()
                             }
                             val image = PDImageXObject.createFromByteArray(result, bytes, "compressed_page_${index + 1}")
-                            val sourceBox = source.getPage(index).mediaBox
-                            val page = PDPage(PDRectangle(sourceBox.width, sourceBox.height))
+                            val sourcePage = source.getPage(index)
+                            val sourceBox = sourcePage.mediaBox
+                            val pageWidth = if (sourcePage.rotation % 180 != 0) sourceBox.height else sourceBox.width
+                            val pageHeight = if (sourcePage.rotation % 180 != 0) sourceBox.width else sourceBox.height
+                            val page = PDPage(PDRectangle(pageWidth, pageHeight))
                             result.addPage(page)
-                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, sourceBox.width, sourceBox.height) }
+                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, pageWidth, pageHeight) }
                         } finally { bitmap.recycle() }
-                    }
+                    } finally { rendered.close() }
                 }
             }
             return saveEdited(result, "compressed")
@@ -338,9 +351,8 @@ class PdfEngine(private val context: Context) {
 
     /** Add a clickable web link annotation to the selected page. */
     fun addWebLink(uri: Uri, url: String, pageIndex: Int): File {
+        PdfEditorValidation.requireHttpUrl(url)
         val parsed = android.net.Uri.parse(url.trim())
-        require(parsed.scheme == "https" || parsed.scheme == "http") { "Enter a valid http or https URL." }
-        require(!parsed.host.isNullOrBlank()) { "Enter a valid web address." }
         val document = openDocument(uri)
         try {
             require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
@@ -360,10 +372,10 @@ class PdfEngine(private val context: Context) {
         val document = openDocument(uri)
         try {
             document.documentInformation.apply {
-                if (title.isNotBlank()) this.title = title.take(250)
-                if (author.isNotBlank()) this.author = author.take(150)
-                if (subject.isNotBlank()) this.subject = subject.take(500)
-                if (keywords.isNotBlank()) this.keywords = keywords.take(500)
+                this.title = title.take(250)
+                this.author = author.take(150)
+                this.subject = subject.take(500)
+                this.keywords = keywords.take(500)
             }
             return saveEdited(document, "metadata")
         } finally { document.close() }
@@ -390,6 +402,137 @@ class PdfEngine(private val context: Context) {
             }
             document.protect(policy)
             return saveEdited(document, "protected")
+        } finally { document.close() }
+    }
+
+
+    /** Place text using normalized page coordinates (0..1, origin at top-left). */
+    fun addPositionedText(uri: Uri, text: String, pageIndex: Int, xRatio: Float, yRatio: Float, fontSize: Float = 16f): File {
+        require(text.isNotBlank()) { "Enter text to add." }
+        PdfEditorValidation.requireNormalizedPoint(xRatio, yRatio)
+        require(fontSize in 6f..72f) { "Font size must be between 6 and 72 points." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            val box = page.mediaBox
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.beginText()
+                stream.setFont(PDType1Font.HELVETICA, fontSize)
+                stream.newLineAtOffset((box.width * xRatio).coerceIn(0f, box.width - 8f),
+                    (box.height * (1f - yRatio)).coerceIn(8f, box.height - 8f))
+                stream.showText(text.take(500))
+                stream.endText()
+            }
+            return saveEdited(document, "positioned_text")
+        } finally { document.close() }
+    }
+
+    /** Add a hand-drawn signature from normalized points (0..1, top-left origin). */
+    fun addDrawnSignature(uri: Uri, pageIndex: Int, points: List<Pair<Float, Float>>): File {
+        require(points.size >= 2) { "Draw a signature first." }
+        require(points.all { it.first in 0f..1f && it.second in 0f..1f }) { "Signature coordinates are invalid." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            val box = page.mediaBox
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.setStrokingColor(25, 45, 85)
+                stream.setLineWidth(2.2f)
+                stream.setLineCapStyle(1)
+                stream.setLineJoinStyle(1)
+                val first = points.first()
+                stream.moveTo(first.first * box.width, (1f - first.second) * box.height)
+                points.drop(1).forEach { point ->
+                    stream.lineTo(point.first * box.width, (1f - point.second) * box.height)
+                }
+                stream.stroke()
+            }
+            return saveEdited(document, "signed")
+        } finally { document.close() }
+    }
+
+    /**
+     * Permanently redact a normalized rectangle by rasterizing every page and painting
+     * the target pixels black before rebuilding the PDF. This removes selectable text,
+     * vector objects, links, annotations and form fields from the output by design.
+     */
+    fun redactRegion(uri: Uri, pageIndex: Int, left: Float, top: Float, width: Float, height: Float): File {
+        require(pageIndex >= 0) { "Page index is invalid." }
+        PdfEditorValidation.requireNormalizedRectangle(left, top, width, height)
+        val source = openDocument(uri)
+        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: run { source.close(); error("Cannot open PDF for redaction.") }
+        val result = PDDocument()
+        try {
+            require(pageIndex < source.numberOfPages) { "Page not found." }
+            android.graphics.pdf.PdfRenderer(descriptor).use { renderer ->
+                require(renderer.pageCount == source.numberOfPages) { "PDF page count changed while opening." }
+                for (index in 0 until renderer.pageCount) {
+                    renderer.openPage(index).use { rendered ->
+                        val scale = minOf(1.5f, 1800f / maxOf(rendered.width, rendered.height))
+                        val bitmap = Bitmap.createBitmap(
+                            (rendered.width * scale).toInt().coerceAtLeast(1),
+                            (rendered.height * scale).toInt().coerceAtLeast(1),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            rendered.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                            if (index == pageIndex) {
+                                val paint = android.graphics.Paint().apply {
+                                    color = android.graphics.Color.BLACK
+                                    style = android.graphics.Paint.Style.FILL
+                                }
+                                android.graphics.Canvas(bitmap).drawRect(
+                                    left * bitmap.width, top * bitmap.height,
+                                    (left + width) * bitmap.width, (top + height) * bitmap.height, paint
+                                )
+                            }
+                            val bytes = ByteArrayOutputStream().use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                out.toByteArray()
+                            }
+                            val sourcePage = source.getPage(index)
+                            val sourceBox = sourcePage.mediaBox
+                            val pageWidth = if (sourcePage.rotation % 180 != 0) sourceBox.height else sourceBox.width
+                            val pageHeight = if (sourcePage.rotation % 180 != 0) sourceBox.width else sourceBox.height
+                            val page = PDPage(PDRectangle(pageWidth, pageHeight))
+                            result.addPage(page)
+                            val image = PDImageXObject.createFromByteArray(result, bytes, "redacted_page_${index + 1}")
+                            PDPageContentStream(result, page).use { it.drawImage(image, 0f, 0f, pageWidth, pageHeight) }
+                        } finally { bitmap.recycle() }
+                    }
+                }
+            }
+            // Do not copy source metadata into the redacted output.
+            return saveEdited(result, "redacted")
+        } finally {
+            result.close()
+            source.close()
+            descriptor.close()
+        }
+    }
+
+    /** Return editable AcroForm field names for the form-fill screen. */
+    fun listFormFields(uri: Uri): List<String> {
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: return emptyList()
+            return form.fields.mapNotNull { it.fullyQualifiedName }.sorted()
+        } finally { document.close() }
+    }
+
+    /** Fill a named AcroForm field and export a separate PDF copy. */
+    fun fillFormField(uri: Uri, fieldName: String, value: String): File {
+        require(fieldName.isNotBlank()) { "Choose a form field." }
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: error("This PDF has no interactive form.")
+            val field = form.getField(fieldName) ?: error("Form field not found.")
+            field.setValue(value)
+            return saveEdited(document, "form_filled")
         } finally { document.close() }
     }
 
