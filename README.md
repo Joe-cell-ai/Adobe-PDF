@@ -25,12 +25,11 @@ Use Android Studio with JDK 17 and Android SDK 35. Open the repository and run t
 
 ## Next roadmap
 
-- Free-position text placement with page selection and percentage-based coordinates
-- Drawn signatures and richer annotation controls
-- OCR for additional scripts/languages and improved text positioning
-- Additional conversion formats (PDF to image, Office formats) and non-destructive compression that preserves selectable text and vector graphics
-- Interactive AcroForm field filling, metadata clearing and permanent visual redaction
-- Accessibility, dark theme, large-file testing and release hardening
+- Rotated-page OCR coordinate correction and additional OCR positioning tests
+- PDF-to-image export with page-range and output-quality controls
+- Safer handling and compatibility tests for encrypted PDFs and AcroForm variants
+- Accessibility review, dark theme, large-file memory testing and release hardening
+- Evaluate text/vector-preserving compression without adding large runtime dependencies
 
 ## Feature references
 
