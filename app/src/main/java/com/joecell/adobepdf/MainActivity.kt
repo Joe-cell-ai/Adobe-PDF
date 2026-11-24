@@ -65,6 +65,8 @@ private fun PdfHome() {
     var message by remember { mutableStateOf("Your documents stay on this device during processing.") }
     var busy by remember { mutableStateOf(false) }
     var output by remember { mutableStateOf<File?>(null) }
+    var compressionQuality by remember { mutableFloatStateOf(68f) }
+    var showCompressionDialog by remember { mutableStateOf(false) }
     var textToAdd by remember { mutableStateOf("Approved") }
     var pageCount by remember { mutableIntStateOf(0) }
     var showTextDialog by remember { mutableStateOf(false) }
@@ -234,8 +236,8 @@ private fun PdfHome() {
                     runOperation("Rotating pages") { engine.rotateAllPages(selected.first()) }
                 } }
                 item { ToolCard("Add text", "Place a text label on the first page", Icons.Default.Edit, selected.size != 1 || busy) { showTextDialog = true } }
-                item { ToolCard("Compress PDF", "Reduce file size by optimising page images; flattens text and vector content", Icons.Default.Compress, selected.size != 1 || busy) {
-                    runOperation("Compressing PDF") { engine.compressPdf(selected.first()) }
+                item { ToolCard("Compress PDF", "Choose image quality and reduce file size; output is flattened", Icons.Default.Compress, selected.size != 1 || busy) {
+                    showCompressionDialog = true
                 } }
                 item { ToolCard("Images to PDF", "Combine photos and images into a multi-page PDF", Icons.Default.Collections, busy) {
                     pickImagesForPdf.launch("image/*")
@@ -419,6 +421,21 @@ private fun PdfHome() {
         confirmButton = { TextButton(onClick = { showLinkDialog = false; activeUri?.let { uri -> runOperation("Adding link") { engine.addWebLink(uri, linkText, (linkPage.toIntOrNull() ?: 1) - 1) } } }) { Text("Add link") } },
         dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Cancel") } }
     )
+    if (showCompressionDialog) AlertDialog(
+        onDismissRequest = { showCompressionDialog = false },
+        title = { Text("Compress PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("JPEG quality: ${compressionQuality.toInt()}%", fontWeight = FontWeight.SemiBold)
+            Slider(value = compressionQuality, onValueChange = { compressionQuality = it }, valueRange = 35f..90f, steps = 10)
+            Text("Lower quality usually creates a smaller file. This mode rasterizes pages, so selectable text, vector graphics, forms, links and annotations are not preserved.", color = Color.Gray, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            showCompressionDialog = false
+            selected.firstOrNull()?.let { uri -> runOperation("Compressing PDF") { engine.compressPdf(uri, compressionQuality.toInt()) } }
+        }) { Text("Compress") } },
+        dismissButton = { TextButton(onClick = { showCompressionDialog = false }) { Text("Cancel") } }
+    )
+
     if (showMetadataDialog) AlertDialog(
         onDismissRequest = { showMetadataDialog = false },
         title = { Text("PDF document properties") },
