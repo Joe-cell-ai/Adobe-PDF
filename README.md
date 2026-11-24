@@ -8,14 +8,14 @@ A privacy-first, open-source native Android PDF workspace built from scratch.
 - Android Storage Access Framework PDF selection and export
 - On-device PDF reader with continuous page rendering and pinch-to-zoom
 - Page organizer with thumbnails, selection, reorder, delete, duplicate, extract and rotate operations
-- Local PDF merge, first-page extraction and rotate-all-pages tools
+- Local PDF merge, page extraction, crop, blank-page detection/removal, page rotation and multi-tool page organizer
 - PDF editor overlays: add text, insert an image, add a highlight rectangle and add a typed italic signature
 - Offline OCR using the bundled ML Kit Latin text model; create a searchable PDF by adding an invisible text layer to scanned pages
 - Convert multiple images into a multi-page PDF
 - Compress image-heavy PDFs by rendering pages to JPEG and rebuilding a smaller PDF
 - PDF sticky-note annotations and clickable HTTP/HTTPS link annotations
-- Edit standard PDF metadata: title, author, subject and keywords
-- Password-protect PDFs with separate user and owner passwords (128-bit encryption)
+- Edit or remove standard PDF metadata, including embedded XMP metadata
+- Password-protect PDFs with separate user and owner passwords (128-bit encryption); decrypt/unlock with the correct supplied password
 - Edited files are exported as separate PDFs; the source document is not overwritten
 - No account or cloud upload is required for these local operations
 
@@ -68,6 +68,13 @@ The redaction workflow intentionally flattens the output to prevent recovery of 
 
 ## APK size controls
 
-- Debug APKs are split by ABI (arm64-v8a, armeabi-v7a and x86_64) so a device downloads only its native build rather than a universal APK.
+- GitHub Actions produces one universal debug APK containing the configured Android ABIs, so users install a single file.
 - Release builds enable code shrinking and resource shrinking.
 - OCR intentionally includes only the Latin recognition model in this version; extra bundled scripts would increase install size substantially.
+
+
+## Local PDF toolkit additions
+
+The current feature branch adds a page crop tool (normalized crop rectangle applied to all pages), on-device blank-page detection/removal, metadata removal, password-based PDF unlocking, and a PDF Multi Tool shortcut to the page organizer. Blank-page detection is heuristic: it treats pages with very little dark pixel content as blank, so inspect the output before sharing documents containing faint scans, pale diagrams or intentionally empty pages. Unlocking requires the document's correct password and does not bypass encryption. The original input is never overwritten.
+
+The editor remains a native offline implementation. Existing editing actions include positioned text, image insertion, highlights, sticky notes, links, drawn/typed signatures, redaction and AcroForm filling where supported. Some advanced Sejda/BentoPDF capabilities (such as full reflow editing of existing text, XFA forms, advanced form creation, vector-preserving compression, and digital-signature certificate workflows) are not claimed by this build.
