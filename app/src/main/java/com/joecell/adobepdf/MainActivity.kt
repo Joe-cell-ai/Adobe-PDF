@@ -136,6 +136,9 @@ private fun PdfHome() {
     val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             selected = listOf(uri)
+            editHistory.clear()
+            historyRevision++
+            output = null
             activeUri = uri
             screen = PdfScreen.VIEWER
         }
@@ -258,7 +261,7 @@ private fun PdfHome() {
                                 Icon(Icons.Default.PictureAsPdf, null, tint = Accent)
                                 Spacer(Modifier.width(10.dp))
                                 Text(uri.lastPathSegment?.substringAfterLast('/') ?: "Selected PDF", Modifier.weight(1f), maxLines = 1)
-                                IconButton(onClick = { activeUri = uri; screen = PdfScreen.VIEWER }) { Icon(Icons.Default.Visibility, "View") }
+                                IconButton(onClick = { editHistory.clear(); historyRevision++; output = null; activeUri = uri; screen = PdfScreen.VIEWER }) { Icon(Icons.Default.Visibility, "View") }
                                 IconButton(onClick = { selected = selected - uri }) { Icon(Icons.Default.Close, "Remove") }
                             }
                         }
@@ -334,6 +337,8 @@ private fun PdfHome() {
                         TextButton(onClick = { zoom = 0.85f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit page") }
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = !busy && editHistory.canUndo, onClick = { undoEdit() }) { Icon(Icons.Default.Undo, null); Text("Undo") }
+                        OutlinedButton(enabled = !busy && editHistory.canRedo, onClick = { redoEdit() }) { Icon(Icons.Default.Redo, null); Text("Redo") }
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
                         OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
                         OutlinedButton(enabled = !busy, onClick = { showHighlightDialog = true }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
