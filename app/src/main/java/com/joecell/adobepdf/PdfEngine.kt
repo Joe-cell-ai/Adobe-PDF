@@ -36,7 +36,7 @@ class PdfEngine(private val context: Context) {
         val document = input.use { PDDocument.load(it) }
         require(document.numberOfPages > 0) { "The PDF has no pages." }
         val result = PDDocument()
-        result.addPage(document.getPage(0))
+        result.importPage(document.getPage(0))
         val output = File(context.cacheDir, "page_1_${System.currentTimeMillis()}.pdf")
         result.save(output)
         result.close()
