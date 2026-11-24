@@ -50,8 +50,6 @@ class PdfEditHistoryTest {
         assertEquals(files[1], history.undo())
         assertNull(history.undo())
     }
-}
-
 
     @Test fun discardedRedoBranchDeletesOnlyUnreferencedSnapshots() {
         val original = pdf("original")
@@ -92,3 +90,4 @@ class PdfEditHistoryTest {
         assertFalse(files[2].exists())
         assertFalse(files[3].exists())
     }
+}
