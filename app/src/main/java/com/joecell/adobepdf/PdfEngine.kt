@@ -143,8 +143,10 @@ class PdfEngine(private val context: Context) {
                 val image = LosslessFactory.createFromImage(document, bitmap)
                 val page = document.getPage(pageIndex)
                 val box = page.mediaBox
-                val width = box.width * widthRatio
-                val height = minOf(box.height * 0.8f, width * image.height / image.width)
+                val targetWidth = box.width * widthRatio
+                val scale = minOf(targetWidth / image.width, (box.height * 0.8f) / image.height)
+                val width = image.width * scale
+                val height = image.height * scale
                 val x = (box.width * xRatio).coerceIn(0f, box.width - width)
                 val yTop = (box.height * yRatio).coerceIn(0f, box.height - height)
                 PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use {
