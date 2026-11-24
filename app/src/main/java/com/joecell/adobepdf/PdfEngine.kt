@@ -36,23 +36,24 @@ data class PdfFormFieldInfo(val name: String, val type: String, val value: Strin
 data class PdfFormCapabilities(val hasAcroForm: Boolean, val hasXfaPacket: Boolean, val fields: List<PdfFormFieldInfo>)
 
 /** Reopen a document and inspect its interactive form fields without mutating it. */
-fun inspectForm(uri: Uri): PdfFormCapabilities {
-    val document = openDocument(uri)
-    try {
-        val form = document.documentCatalog.acroForm ?: return PdfFormCapabilities(false, false, emptyList())
-        val fields = form.fields.mapNotNull { field ->
-            val name = field.fullyQualifiedName ?: return@mapNotNull null
-            PdfFormFieldInfo(name, field.fieldType ?: "Unknown", field.valueAsString ?: "", field.isReadOnly, field.isRequired)
-        }.sortedBy { it.name }
-        return PdfFormCapabilities(true, form.cosObject.containsKey(COSName.XFA), fields)
-    } finally { document.close() }
-}
 /** Reopen verification result for a saved PDF draft. */
 data class PdfSaveVerification(val byteCount: Long, val pageCount: Int, val formFieldCount: Int, val signatureCount: Int)
 
 /** Local-only PDF operations using Android's Storage Access Framework. */
 class PdfEngine(private val context: Context) {
     init { PDFBoxResourceLoader.init(context) }
+
+    fun inspectForm(uri: Uri): PdfFormCapabilities {
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: return PdfFormCapabilities(false, false, emptyList())
+            val fields = form.fields.mapNotNull { field ->
+                val name = field.fullyQualifiedName ?: return@mapNotNull null
+                PdfFormFieldInfo(name, field.fieldType ?: "Unknown", field.valueAsString ?: "", field.isReadOnly, field.isRequired)
+            }.sortedBy { it.name }
+            return PdfFormCapabilities(true, form.cosObject.containsKey(COSName.XFA), fields)
+        } finally { document.close() }
+    }
 
     fun merge(uris: List<Uri>): File {
         require(uris.size >= 2) { "Choose at least two PDF files to merge." }
