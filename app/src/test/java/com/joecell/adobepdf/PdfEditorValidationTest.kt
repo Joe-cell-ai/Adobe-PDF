@@ -30,3 +30,22 @@ class PdfEditorValidationTest {
         assertThrows(IllegalArgumentException::class.java) { PdfEditorValidation.requireHttpUrl("https:///missing-host") }
     }
 }
+
+
+    @Test fun signatureRequiresAtLeastTwoPoints() {
+        assertFailsWith<IllegalArgumentException> {
+            PdfEditorValidation.requireSignatureStrokes(listOf(listOf(0.5f to 0.5f)))
+        }
+    }
+
+    @Test fun signatureAllowsIndependentStrokes() {
+        PdfEditorValidation.requireSignatureStrokes(
+            listOf(listOf(0.1f to 0.2f, 0.2f to 0.3f), listOf(0.7f to 0.8f, 0.8f to 0.7f))
+        )
+    }
+
+    @Test fun signatureRejectsCoordinatesOutsidePage() {
+        assertFailsWith<IllegalArgumentException> {
+            PdfEditorValidation.requireSignatureStrokes(listOf(listOf(0.1f to 0.2f, 1.1f to 0.3f)))
+        }
+    }
