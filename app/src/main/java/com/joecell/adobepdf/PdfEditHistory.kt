@@ -56,17 +56,18 @@ internal class PdfEditHistory(private val maxEntries: Int = 30) {
         return file
     }
 
-    /** Clears history and deletes every snapshot owned by it. */
-    fun clear() {
+    /** Clears history while optionally preserving the currently open draft. */
+    fun clear(preserve: Set<File> = emptySet()) {
         val owned = entries.toList()
         entries.clear()
         cursor = 0
-        deleteUnreferenced(owned)
+        deleteUnreferenced(owned, preserve)
     }
 
-    private fun deleteUnreferenced(removed: List<Entry>) {
+    private fun deleteUnreferenced(removed: List<Entry>, preserve: Set<File> = emptySet()) {
         if (removed.isEmpty()) return
-        val retained = entries.flatMap { listOf(it.before.canonicalPath, it.after.canonicalPath) }.toSet()
+        val retained = entries.flatMap { listOf(it.before.canonicalPath, it.after.canonicalPath) }.toSet() +
+            preserve.map { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath) }
         removed.flatMap { listOf(it.before, it.after) }
             .distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath) }
             .forEach { file ->
