@@ -127,6 +127,7 @@ private fun PdfHome() {
     var formFieldValue by remember { mutableStateOf("") }
     var signatureStrokes by remember { mutableStateOf<List<List<Pair<Float, Float>>>>(emptyList()) }
     var showDrawnSignatureDialog by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
 
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
@@ -339,6 +340,7 @@ private fun PdfHome() {
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = !busy && historyRevision >= 0 && editHistory.canUndo, onClick = { undoEdit() }) { Icon(Icons.Default.Undo, null); Text("Undo") }
                         OutlinedButton(enabled = !busy && historyRevision >= 0 && editHistory.canRedo, onClick = { redoEdit() }) { Icon(Icons.Default.Redo, null); Text("Redo") }
+                        OutlinedButton(enabled = !busy, onClick = { showHistoryDialog = true }) { Icon(Icons.Default.History, null); Text("History (${editHistory.size})") }
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
                         OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
                         OutlinedButton(enabled = !busy, onClick = { showHighlightDialog = true }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
@@ -490,6 +492,38 @@ private fun PdfHome() {
             }
         }
     }
+    if (showHistoryDialog) AlertDialog(
+        onDismissRequest = { showHistoryDialog = false },
+        title = { Text("Editing history") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Recent PDF edits · ${editHistory.size} retained", color = Color.Gray, fontSize = 12.sp)
+                if (editHistory.size == 0) Text("No edits have been recorded for this document yet.")
+                else LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    itemsIndexed(editHistory.entries().reversed()) { reverseIndex, entry ->
+                        val index = editHistory.size - reverseIndex
+                        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("$index. ${entry.label}", fontWeight = FontWeight.SemiBold)
+                                Text("PDF snapshot", color = Color.Gray, fontSize = 11.sp)
+                            }
+                            Text(if (index <= editHistory.currentEntryIndex) "Applied" else "Redo", color = Color.Gray, fontSize = 11.sp)
+                        }
+                        HorizontalDivider()
+                    }
+                }
+                Text("Undo and redo restore immutable PDF snapshots. Clearing history deletes temporary snapshots, not the current document.", color = Color.Gray, fontSize = 11.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = { showHistoryDialog = false }) { Text("Close") } },
+        dismissButton = { TextButton(onClick = {
+            editHistory.clear()
+            historyRevision++
+            showHistoryDialog = false
+            message = "Editing history cleared. Current PDF remains open."
+        }, enabled = !busy) { Text("Clear history") } }
+    )
+
     if (showTextDialog) AlertDialog(
         onDismissRequest = { showTextDialog = false },
         title = { Text("Add text to first page") },
