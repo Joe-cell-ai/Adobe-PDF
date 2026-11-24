@@ -3,9 +3,11 @@ package com.joecell.adobepdf
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.graphics.BitmapFactory
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import java.io.File
@@ -89,6 +91,81 @@ class PdfEngine(private val context: Context) {
             document.save(output)
             return output
         } finally { document.close() }
+    }
+
+
+    fun addTextOverlay(uri: Uri, text: String, pageIndex: Int = 0): File {
+        require(text.isNotBlank()) { "Enter text to add." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.beginText()
+                stream.setFont(PDType1Font.HELVETICA, 14f)
+                stream.newLineAtOffset(48f, page.mediaBox.height - 64f)
+                stream.showText(text.take(500))
+                stream.endText()
+            }
+            return saveEdited(document, "text")
+        } finally { document.close() }
+    }
+
+    fun insertImage(uri: Uri, imageUri: Uri, pageIndex: Int = 0): File {
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val bitmap = context.contentResolver.openInputStream(imageUri)?.use { BitmapFactory.decodeStream(it) }
+                ?: error("Could not read the selected image.")
+            try {
+                val image = LosslessFactory.createFromImage(document, bitmap)
+                val page = document.getPage(pageIndex)
+                val scale = minOf(page.mediaBox.width * 0.42f / image.width, page.mediaBox.height * 0.32f / image.height, 1f)
+                val width = image.width * scale
+                val height = image.height * scale
+                PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use {
+                    it.drawImage(image, (page.mediaBox.width - width) / 2f, (page.mediaBox.height - height) / 2f, width, height)
+                }
+            } finally { bitmap.recycle() }
+            return saveEdited(document, "image")
+        } finally { document.close() }
+    }
+
+    fun addHighlight(uri: Uri, pageIndex: Int = 0): File {
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val box = document.getPage(pageIndex).mediaBox
+            PDPageContentStream(document, document.getPage(pageIndex), PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.setNonStrokingColor(255, 238, 120)
+                stream.addRect(box.width * 0.22f, box.height * 0.52f, box.width * 0.56f, 24f)
+                stream.fill()
+            }
+            return saveEdited(document, "highlight")
+        } finally { document.close() }
+    }
+
+    fun addTypedSignature(uri: Uri, signature: String, pageIndex: Int = 0): File {
+        require(signature.isNotBlank()) { "Enter a signature." }
+        val document = openDocument(uri)
+        try {
+            require(pageIndex in 0 until document.numberOfPages) { "Page not found." }
+            val page = document.getPage(pageIndex)
+            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { stream ->
+                stream.beginText()
+                stream.setFont(PDType1Font.TIMES_ITALIC, 24f)
+                stream.newLineAtOffset(48f, 54f)
+                stream.showText(signature.take(100))
+                stream.endText()
+            }
+            return saveEdited(document, "signature")
+        } finally { document.close() }
+    }
+
+    private fun saveEdited(document: PDDocument, prefix: String): File {
+        val output = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.pdf")
+        document.save(output)
+        return output
     }
 
     fun pageCount(uri: Uri): Int {
