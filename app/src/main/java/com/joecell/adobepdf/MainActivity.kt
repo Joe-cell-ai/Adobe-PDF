@@ -517,7 +517,8 @@ private fun PdfHome() {
         },
         confirmButton = { TextButton(onClick = { showHistoryDialog = false }) { Text("Close") } },
         dismissButton = { TextButton(onClick = {
-            editHistory.clear()
+            val currentDraft = activeUri?.takeIf { it.scheme == "file" }?.path?.let(::File)
+            editHistory.clear(currentDraft?.let { setOf(it) } ?: emptySet())
             historyRevision++
             showHistoryDialog = false
             message = "Editing history cleared. Current PDF remains open."
