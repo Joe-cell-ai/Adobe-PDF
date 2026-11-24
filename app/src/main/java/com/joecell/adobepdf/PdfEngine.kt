@@ -690,7 +690,11 @@ class PdfEngine(private val context: Context) {
     }
 
     fun pageCount(uri: Uri): Int {
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        val input = if (uri.scheme == "file") {
+            File(uri.path ?: error("Invalid draft PDF path.")).inputStream()
+        } else {
+            context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF.")
+        }
         return input.use { PDDocument.load(it).use { pdf -> pdf.numberOfPages } }
     }
 
