@@ -11,6 +11,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.google.android.gms.tasks.Tasks
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -30,6 +31,22 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
 
+/** Capability report for AcroForm/XFA documents. XFA packets are detected and preserved, not interpreted. */
+data class PdfFormFieldInfo(val name: String, val type: String, val value: String, val readOnly: Boolean, val required: Boolean)
+data class PdfFormCapabilities(val hasAcroForm: Boolean, val hasXfaPacket: Boolean, val fields: List<PdfFormFieldInfo>)
+
+/** Reopen a document and inspect its interactive form fields without mutating it. */
+fun inspectForm(uri: Uri): PdfFormCapabilities {
+    val document = openDocument(uri)
+    try {
+        val form = document.documentCatalog.acroForm ?: return PdfFormCapabilities(false, false, emptyList())
+        val fields = form.fields.mapNotNull { field ->
+            val name = field.fullyQualifiedName ?: return@mapNotNull null
+            PdfFormFieldInfo(name, field.fieldType ?: "Unknown", field.valueAsString ?: "", field.isReadOnly, field.isRequired)
+        }.sortedBy { it.name }
+        return PdfFormCapabilities(true, form.cosObject.containsKey(COSName.XFA), fields)
+    } finally { document.close() }
+}
 /** Reopen verification result for a saved PDF draft. */
 data class PdfSaveVerification(val byteCount: Long, val pageCount: Int, val formFieldCount: Int, val signatureCount: Int)
 
