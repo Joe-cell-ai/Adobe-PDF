@@ -49,3 +49,7 @@ Compression currently rasterises page content, so selectable text, vector graphi
 - Metadata fields can now be cleared by submitting empty values
 
 The redaction workflow intentionally flattens the output to prevent recovery of the redacted page content from the PDF object layer. Verify redacted output visually before sharing; the source document is never overwritten.
+
+
+- Handwritten signature drawing pad with vector stroke output
+- Selected launcher icon concept B applied as an adaptive purple/cyan icon, with a legacy fallback for older Android versions
