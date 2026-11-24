@@ -28,8 +28,6 @@ internal object PdfEditorValidation {
             (parsed.scheme.equals("https", true) || parsed.scheme.equals("http", true)) &&
             !parsed.host.isNullOrBlank()) { "Enter a valid http or https URL." }
     }
-}
-
 
     fun requireSignatureStrokes(strokes: List<List<Pair<Float, Float>>>) {
         require(strokes.sumOf { it.size } >= 2) { "Draw a signature first." }
@@ -38,3 +36,4 @@ internal object PdfEditorValidation {
                 point.first in 0f..1f && point.second in 0f..1f
         } }) { "Signature coordinates are invalid." }
     }
+}
