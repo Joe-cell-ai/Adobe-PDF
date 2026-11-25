@@ -63,8 +63,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
             val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Selected PDF"
             recent.remove(name)
             recent.add(0, name)
-            // Open the existing, fully featured PDF workspace after choosing a document.
-            // The workspace retains its own document picker and editing pipeline.
+            onOpenWorkspace()
         }
     }
 
@@ -76,7 +75,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Adobe", color = Color(0xFFED1C24), fontSize = 25.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = { query = if (query.isEmpty()) " " else "" }) { Icon(Icons.Default.Search, "Search", tint = AdobeInk) }
+                IconButton(onClick = { query = if (query.isEmpty()) "Welcome" else "" }) { Icon(Icons.Default.Search, "Search", tint = AdobeInk) }
                 IconButton(onClick = { }) {
                     Box(Modifier.size(42.dp).clip(RoundedCornerShape(50)).background(Color(0xFFE9E9E9)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Person, "Profile", tint = Color.DarkGray)
@@ -86,7 +85,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
         },
         bottomBar = {
             NavigationBar(containerColor = Color.White, tonalElevation = 2.dp) {
-                val icons = listOf(Icons.Default.Home, Icons.Default.EditDocument, Icons.Default.Workspaces, Icons.Default.InsertDriveFile, Icons.Default.GridView)
+                val icons = listOf(Icons.Default.Home, Icons.Default.Edit, Icons.Default.Dashboard, Icons.Default.InsertDriveFile, Icons.Default.GridView)
                 AdobeTab.values().forEachIndexed { index, item ->
                     NavigationBarItem(
                         selected = tab == item,
@@ -127,7 +126,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
                 onQuery = { query = it },
                 onAction = onOpenWorkspace
             )
-            AdobeTab.SPACES -> SimpleWorkspaceContent(Modifier.fillMaxSize().padding(inset), "PDF Spaces", "Keep related PDFs together. Open a document to start a workspace.", Icons.Default.Workspaces, onOpenWorkspace)
+            AdobeTab.SPACES -> SimpleWorkspaceContent(Modifier.fillMaxSize().padding(inset), "PDF Spaces", "Keep related PDFs together. Open a document to start a workspace.", Icons.Default.Dashboard, onOpenWorkspace)
             AdobeTab.FILES -> SimpleWorkspaceContent(Modifier.fillMaxSize().padding(inset), "Files", "Browse PDFs stored on your device using the document picker.", Icons.Default.FolderOpen) { picker.launch(arrayOf("application/pdf")) }
             AdobeTab.TOOLS -> ToolsContent(Modifier.fillMaxSize().padding(inset), onOpenWorkspace)
         }
