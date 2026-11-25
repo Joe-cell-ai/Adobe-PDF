@@ -152,8 +152,8 @@ private fun PdfHome() {
     }
     val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val file = output
-        if (uri != null && file != null) runCatching { engine.saveToUri(file, context.contentResolver, uri) }
-            .onSuccess { message = "Saved successfully. Your original PDF is unchanged." }
+        if (uri != null && file != null) runCatching { engine.savePdfToUri(file, context.contentResolver, uri) }
+            .onSuccess { verification -> message = "Saved and reopened successfully · ${verification.pageCount} pages · ${verification.byteCount} bytes. Original PDF is unchanged." }
             .onFailure { message = it.message ?: "Save failed." }
     }
 
