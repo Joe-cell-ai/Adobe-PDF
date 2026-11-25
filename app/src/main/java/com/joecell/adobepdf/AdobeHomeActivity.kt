@@ -56,16 +56,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
     var recentTab by remember { mutableStateOf("Recent") }
     val categories = listOf("All", "Flyer", "Resume", "Instagram post", "Card")
     val recent = remember { mutableStateListOf("Welcome.pdf") }
-    val picker = androidx.activity.compose.rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Selected PDF"
-            recent.remove(name)
-            recent.add(0, name)
-            onOpenWorkspace()
-        }
-    }
+
 
     Scaffold(
         containerColor = Color.White,
@@ -99,7 +90,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
         },
         floatingActionButton = {
             if (tab == AdobeTab.HOME || tab == AdobeTab.FILES) {
-                FloatingActionButton(onClick = { picker.launch(arrayOf("application/pdf")) }, containerColor = AdobeBlue, contentColor = Color.White) {
+                FloatingActionButton(onClick = onOpenWorkspace, containerColor = AdobeBlue, contentColor = Color.White) {
                     Icon(Icons.Default.Add, "Add PDF")
                 }
             }
@@ -112,7 +103,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
                 onRecentTab = { recentTab = it },
                 recent = recent,
                 onOpen = onOpenWorkspace,
-                onPick = { picker.launch(arrayOf("application/pdf")) },
+                onPick = onOpenWorkspace,
                 query = query
             )
             AdobeTab.CREATE -> CreateContent(
@@ -127,7 +118,7 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
                 onAction = onOpenWorkspace
             )
             AdobeTab.SPACES -> SimpleWorkspaceContent(Modifier.fillMaxSize().padding(inset), "PDF Spaces", "Keep related PDFs together. Open a document to start a workspace.", Icons.Default.Dashboard, onOpenWorkspace)
-            AdobeTab.FILES -> SimpleWorkspaceContent(Modifier.fillMaxSize().padding(inset), "Files", "Browse PDFs stored on your device using the document picker.", Icons.Default.FolderOpen) { picker.launch(arrayOf("application/pdf")) }
+            AdobeTab.FILES -> SimpleWorkspaceContent(Modifier.fillMaxSize().padding(inset), "Files", "Browse PDFs stored on your device using the document picker.", Icons.Default.FolderOpen, onOpenWorkspace)
             AdobeTab.TOOLS -> ToolsContent(Modifier.fillMaxSize().padding(inset), onOpenWorkspace)
         }
     }
