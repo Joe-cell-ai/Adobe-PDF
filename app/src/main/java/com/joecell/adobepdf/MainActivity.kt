@@ -125,6 +125,13 @@ private fun PdfHome() {
     var formFieldNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var formFieldName by remember { mutableStateOf("") }
     var formFieldValue by remember { mutableStateOf("") }
+    var annotationItems by remember { mutableStateOf<List<PdfAnnotationInfo>>(emptyList()) }
+    var annotationIndex by remember { mutableIntStateOf(0) }
+    var annotationX by remember { mutableStateOf("") }
+    var annotationY by remember { mutableStateOf("") }
+    var annotationWidth by remember { mutableStateOf("") }
+    var annotationHeight by remember { mutableStateOf("") }
+    var showAnnotationDialog by remember { mutableStateOf(false) }
     var signatureStrokes by remember { mutableStateOf<List<List<Pair<Float, Float>>>>(emptyList()) }
     var showDrawnSignatureDialog by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
@@ -365,6 +372,26 @@ private fun PdfHome() {
                                 finally { busy = false }
                             }
                         }) { Icon(Icons.Default.EditNote, null); Text("Fill form") }
+                        OutlinedButton(enabled = !busy, onClick = {
+                            scope.launch {
+                                busy = true
+                                try {
+                                    annotationItems = withContext(Dispatchers.IO) { engine.listPageAnnotations(uri, 0) }
+                                    if (annotationItems.isEmpty()) {
+                                        message = "No editable annotations were found on page 1."
+                                    } else {
+                                        annotationIndex = 0
+                                        val item = annotationItems.first()
+                                        annotationX = item.x.toString()
+                                        annotationY = item.y.toString()
+                                        annotationWidth = item.width.toString()
+                                        annotationHeight = item.height.toString()
+                                        showAnnotationDialog = true
+                                    }
+                                } catch (e: Exception) { message = e.message ?: "Could not inspect annotations." }
+                                finally { busy = false }
+                            }
+                        }) { Icon(Icons.Default.Tune, null); Text("Edit annotation") }
 
                     }
                     LazyColumn(
@@ -812,6 +839,62 @@ private fun PdfHome() {
             activeUri?.let { uri -> runOperation("Filling PDF form") { engine.fillFormField(uri, formFieldName, formFieldValue) } }
         }) { Text("Apply value") } },
         dismissButton = { TextButton(onClick = { showFormDialog = false }) { Text("Close") } }
+    )
+
+    if (showAnnotationDialog) AlertDialog(
+        onDismissRequest = { showAnnotationDialog = false },
+        title = { Text("Move or resize annotation") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    val selectedAnnotation = annotationItems.getOrNull(annotationIndex)
+                    OutlinedTextField(
+                        value = selectedAnnotation?.let { "${it.subtype}: ${it.contents.ifBlank { "Annotation ${it.index + 1}" }}" } ?: "",
+                        onValueChange = {}, readOnly = true, label = { Text("Page 1 annotation") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        annotationItems.forEachIndexed { index, item ->
+                            DropdownMenuItem(
+                                text = { Text("${item.subtype}: ${item.contents.ifBlank { "Annotation ${item.index + 1}" }}") },
+                                onClick = {
+                                    annotationIndex = index
+                                    annotationX = item.x.toString()
+                                    annotationY = item.y.toString()
+                                    annotationWidth = item.width.toString()
+                                    annotationHeight = item.height.toString()
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(value = annotationX, onValueChange = { annotationX = it }, label = { Text("X (PDF points)") }, singleLine = true)
+                OutlinedTextField(value = annotationY, onValueChange = { annotationY = it }, label = { Text("Y (PDF points)") }, singleLine = true)
+                OutlinedTextField(value = annotationWidth, onValueChange = { annotationWidth = it }, label = { Text("Width (points)") }, singleLine = true)
+                OutlinedTextField(value = annotationHeight, onValueChange = { annotationHeight = it }, label = { Text("Height (points)") }, singleLine = true)
+                Text("Coordinates are measured from the PDF page's lower-left corner. Read-only annotations cannot be changed.", color = Color.Gray, fontSize = 11.sp)
+            }
+        },
+        confirmButton = {
+            val selected = annotationItems.getOrNull(annotationIndex)
+            TextButton(enabled = selected != null && !selected.readOnly &&
+                listOf(annotationX, annotationY, annotationWidth, annotationHeight).all { it.toFloatOrNull()?.isFinite() == true } &&
+                (annotationWidth.toFloatOrNull() ?: 0f) > 0f && (annotationHeight.toFloatOrNull() ?: 0f) > 0f,
+                onClick = {
+                    showAnnotationDialog = false
+                    activeUri?.let { documentUri ->
+                        runOperation("Updating annotation") {
+                            engine.transformAnnotation(documentUri, 0, selected!!.index,
+                                annotationX.toFloat(), annotationY.toFloat(), annotationWidth.toFloat(), annotationHeight.toFloat())
+                        }
+                    }
+                }
+            ) { Text("Apply position") }
+        },
+        dismissButton = { TextButton(onClick = { showAnnotationDialog = false }) { Text("Cancel") } }
     )
 
     if (showSignatureDialog) AlertDialog(
