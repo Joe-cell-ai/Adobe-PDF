@@ -51,6 +51,7 @@ private enum class AdobeTab(val label: String) { HOME("Home"), CREATE("Create"),
 private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
     var tab by remember { mutableStateOf(AdobeTab.HOME) }
     var query by remember { mutableStateOf("") }
+    var searchOpen by remember { mutableStateOf(false) }
     var showQuickActions by remember { mutableStateOf(true) }
     var templateCategory by remember { mutableStateOf("All") }
     var recentTab by remember { mutableStateOf("Recent") }
@@ -65,8 +66,13 @@ private fun AdobeHomeRoot(onOpenWorkspace: () -> Unit) {
                 Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Adobe", color = Color(0xFFED1C24), fontSize = 25.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = { query = if (query.isEmpty()) "Welcome" else "" }) { Icon(Icons.Default.Search, "Search", tint = AdobeInk) }
+                if (searchOpen) {
+                    OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.weight(1f),
+                        placeholder = { Text("Search PDFs") }, singleLine = true, shape = RoundedCornerShape(24.dp))
+                } else {
+                    Text("Adobe", color = Color(0xFFED1C24), fontSize = 25.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                }
+                IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) query = "" }) { Icon(Icons.Default.Search, "Search", tint = AdobeInk) }
                 IconButton(onClick = { }) {
                     Box(Modifier.size(42.dp).clip(RoundedCornerShape(50)).background(Color(0xFFE9E9E9)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Person, "Profile", tint = Color.DarkGray)
@@ -266,8 +272,20 @@ private fun CreateContent(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                TemplatePreview("Happy Birthday", "Flyer", Color(0xFFFFF4F4), onAction, Modifier.weight(1f))
-                TemplatePreview("Celebrate today", "Flyer", Color(0xFFFFE9F0), onAction, Modifier.weight(1f))
+                val firstTitle = when (category) {
+                    "Resume" -> "Professional Resume"
+                    "Instagram post" -> "Make it memorable"
+                    "Card" -> "A little thank you"
+                    else -> "Happy Birthday"
+                }
+                val secondTitle = when (category) {
+                    "Resume" -> "Modern CV"
+                    "Instagram post" -> "Share your story"
+                    "Card" -> "Best wishes"
+                    else -> "Celebrate today"
+                }
+                TemplatePreview(firstTitle, if (category == "All") "Flyer" else category, Color(0xFFFFF4F4), onAction, Modifier.weight(1f))
+                TemplatePreview(secondTitle, if (category == "All") "Flyer" else category, Color(0xFFFFE9F0), onAction, Modifier.weight(1f))
             }
         }
         item {
