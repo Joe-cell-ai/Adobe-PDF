@@ -61,6 +61,8 @@ private fun PdfHome() {
     val scope = rememberCoroutineScope()
     var selected by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var activeUri by remember { mutableStateOf<Uri?>(null) }
+    val editHistory = remember { PdfEditHistory(maxEntries = 30) }
+    var historyRevision by remember { mutableIntStateOf(0) }
     var screen by remember { mutableStateOf(PdfScreen.HOME) }
     var message by remember { mutableStateOf("Your documents stay on this device during processing.") }
     var busy by remember { mutableStateOf(false) }
@@ -123,8 +125,16 @@ private fun PdfHome() {
     var formFieldNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var formFieldName by remember { mutableStateOf("") }
     var formFieldValue by remember { mutableStateOf("") }
+    var annotationItems by remember { mutableStateOf<List<PdfAnnotationInfo>>(emptyList()) }
+    var annotationIndex by remember { mutableIntStateOf(0) }
+    var annotationX by remember { mutableStateOf("") }
+    var annotationY by remember { mutableStateOf("") }
+    var annotationWidth by remember { mutableStateOf("") }
+    var annotationHeight by remember { mutableStateOf("") }
+    var showAnnotationDialog by remember { mutableStateOf(false) }
     var signatureStrokes by remember { mutableStateOf<List<List<Pair<Float, Float>>>>(emptyList()) }
     var showDrawnSignatureDialog by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
 
     val pageOrder = remember { mutableStateListOf<Int>() }
     val selectedPages = remember { mutableStateListOf<Int>() }
@@ -134,6 +144,9 @@ private fun PdfHome() {
     val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             selected = listOf(uri)
+            editHistory.clear()
+            historyRevision++
+            output = null
             activeUri = uri
             screen = PdfScreen.VIEWER
         }
@@ -146,8 +159,8 @@ private fun PdfHome() {
     }
     val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val file = output
-        if (uri != null && file != null) runCatching { engine.saveToUri(file, context.contentResolver, uri) }
-            .onSuccess { message = "Saved successfully. Your original PDF is unchanged." }
+        if (uri != null && file != null) runCatching { engine.savePdfToUri(file, context.contentResolver, uri) }
+            .onSuccess { verification -> message = "Saved and reopened successfully · ${verification.pageCount} pages · ${verification.byteCount} bytes. Original PDF is unchanged." }
             .onFailure { message = it.message ?: "Save failed." }
     }
 
@@ -168,18 +181,29 @@ private fun PdfHome() {
         scope.launch {
             busy = true
             message = "$label…"
+            var beforeSnapshot: File? = null
             try {
-                val hadOpenDocument = activeUri != null
+                val beforeUri = activeUri
+                if (beforeUri != null) {
+                    beforeSnapshot = withContext(Dispatchers.IO) {
+                        val snapshot = File(context.cacheDir, "pdf_history_" + System.nanoTime() + "_before.pdf")
+                        val input = if (beforeUri.scheme == "file") File(beforeUri.path ?: error("Invalid draft path.")).inputStream() else context.contentResolver.openInputStream(beforeUri) ?: error("Cannot snapshot PDF.")
+                        input.use { source -> snapshot.outputStream().use { target -> source.copyTo(target) } }
+                        snapshot
+                    }
+                }
                 val result = withContext(Dispatchers.IO) { task() }
+                if (beforeSnapshot != null) { editHistory.record(beforeSnapshot!!, result, label); historyRevision++ }
                 output = result
-                // Keep editor operations chained: the next operation in the
-                // viewer starts from this immutable draft, never the original.
-                if (hadOpenDocument) activeUri = Uri.fromFile(result)
-                message = "$label completed. Save the new PDF to keep the changes."
-            } catch (e: Exception) { message = e.message ?: "$label failed." }
+                if (beforeUri != null) activeUri = Uri.fromFile(result)
+                message = "$label completed. Undo is available; save the PDF to keep changes."
+            } catch (e: Exception) { beforeSnapshot?.delete(); message = e.message ?: "$label failed." }
             finally { busy = false }
         }
     }
+
+    fun undoEdit() { val restored = editHistory.undo() ?: return; historyRevision++; activeUri = Uri.fromFile(restored); output = restored; message = "Undo restored the previous PDF snapshot." }
+    fun redoEdit() { val restored = editHistory.redo() ?: return; historyRevision++; activeUri = Uri.fromFile(restored); output = restored; message = "Redo restored the edited PDF snapshot." }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri ->
         val documentUri = activeUri
@@ -245,7 +269,7 @@ private fun PdfHome() {
                                 Icon(Icons.Default.PictureAsPdf, null, tint = Accent)
                                 Spacer(Modifier.width(10.dp))
                                 Text(uri.lastPathSegment?.substringAfterLast('/') ?: "Selected PDF", Modifier.weight(1f), maxLines = 1)
-                                IconButton(onClick = { activeUri = uri; screen = PdfScreen.VIEWER }) { Icon(Icons.Default.Visibility, "View") }
+                                IconButton(onClick = { editHistory.clear(); historyRevision++; output = null; activeUri = uri; screen = PdfScreen.VIEWER }) { Icon(Icons.Default.Visibility, "View") }
                                 IconButton(onClick = { selected = selected - uri }) { Icon(Icons.Default.Close, "Remove") }
                             }
                         }
@@ -256,10 +280,10 @@ private fun PdfHome() {
                     runOperation("Merging PDFs") { engine.merge(selected) }
                 } }
                 item { ToolCard("Extract first page", "Create a new PDF from page one", Icons.Default.ContentCut, selected.size != 1 || busy) {
-                    runOperation("Extracting page") { engine.extractPages(selected.first(), listOf(0)) }
+                    runOperation("Extracting page") { engine.extractPages(activeUri ?: selected.first(), listOf(0)) }
                 } }
                 item { ToolCard("Rotate pages", "Rotate every page by 90 degrees", Icons.Default.RotateRight, selected.size != 1 || busy) {
-                    runOperation("Rotating pages") { engine.rotateAllPages(selected.first()) }
+                    runOperation("Rotating pages") { engine.rotateAllPages(activeUri ?: selected.first()) }
                 } }
                 item { ToolCard("Add text", "Place a text label on the first page", Icons.Default.Edit, selected.size != 1 || busy) { showTextDialog = true } }
                 item { ToolCard("Compress PDF", "Choose image quality and reduce file size; output is flattened", Icons.Default.Compress, selected.size != 1 || busy) {
@@ -280,10 +304,10 @@ private fun PdfHome() {
                 } }
                 item { ToolCard("Crop PDF", "Trim page margins with a custom crop rectangle", Icons.Default.Crop, selected.size != 1 || busy) { showCropDialog = true } }
                 item { ToolCard("Remove blank pages", "Detect mostly-white pages on-device and remove them", Icons.Default.AutoDelete, selected.size != 1 || busy) {
-                    runOperation("Removing blank pages") { engine.removeBlankPages(selected.first()) }
+                    runOperation("Removing blank pages") { engine.removeBlankPages(activeUri ?: selected.first()) }
                 } }
                 item { ToolCard("Remove metadata", "Clear title, author, dates and embedded XMP metadata", Icons.Default.DeleteSweep, selected.size != 1 || busy) {
-                    runOperation("Removing metadata") { engine.removeMetadata(selected.first()) }
+                    runOperation("Removing metadata") { engine.removeMetadata(activeUri ?: selected.first()) }
                 } }
                 item { ToolCard("Unlock PDF", "Remove password protection using the correct document password", Icons.Default.LockOpen, selected.size != 1 || busy) { showUnlockDialog = true } }
                 item { ToolCard("Password protect PDF", "Encrypt a PDF with an open password and owner password", Icons.Default.Lock, selected.size != 1 || busy) {
@@ -321,6 +345,9 @@ private fun PdfHome() {
                         TextButton(onClick = { zoom = 0.85f; pan = androidx.compose.ui.geometry.Offset.Zero }) { Text("Fit page") }
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = !busy && historyRevision >= 0 && editHistory.canUndo, onClick = { undoEdit() }) { Icon(Icons.Default.Undo, null); Text("Undo") }
+                        OutlinedButton(enabled = !busy && historyRevision >= 0 && editHistory.canRedo, onClick = { redoEdit() }) { Icon(Icons.Default.Redo, null); Text("Redo") }
+                        OutlinedButton(enabled = !busy, onClick = { showHistoryDialog = true }) { Icon(Icons.Default.History, null); Text("History (${editHistory.size})") }
                         OutlinedButton(enabled = !busy, onClick = { showTextDialog = true }) { Icon(Icons.Default.TextFields, null); Text("Text") }
                         OutlinedButton(enabled = !busy, onClick = { showImagePlacementDialog = true }) { Icon(Icons.Default.AddPhotoAlternate, null); Text("Image") }
                         OutlinedButton(enabled = !busy, onClick = { showHighlightDialog = true }) { Icon(Icons.Default.Highlight, null); Text("Highlight") }
@@ -345,6 +372,26 @@ private fun PdfHome() {
                                 finally { busy = false }
                             }
                         }) { Icon(Icons.Default.EditNote, null); Text("Fill form") }
+                        OutlinedButton(enabled = !busy, onClick = {
+                            scope.launch {
+                                busy = true
+                                try {
+                                    annotationItems = withContext(Dispatchers.IO) { engine.listPageAnnotations(uri, 0) }
+                                    if (annotationItems.isEmpty()) {
+                                        message = "No editable annotations were found on page 1."
+                                    } else {
+                                        annotationIndex = 0
+                                        val item = annotationItems.first()
+                                        annotationX = item.x.toString()
+                                        annotationY = item.y.toString()
+                                        annotationWidth = item.width.toString()
+                                        annotationHeight = item.height.toString()
+                                        showAnnotationDialog = true
+                                    }
+                                } catch (e: Exception) { message = e.message ?: "Could not inspect annotations." }
+                                finally { busy = false }
+                            }
+                        }) { Icon(Icons.Default.Tune, null); Text("Edit annotation") }
 
                     }
                     LazyColumn(
@@ -472,6 +519,39 @@ private fun PdfHome() {
             }
         }
     }
+    if (showHistoryDialog) AlertDialog(
+        onDismissRequest = { showHistoryDialog = false },
+        title = { Text("Editing history") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Recent PDF edits · ${editHistory.size} retained", color = Color.Gray, fontSize = 12.sp)
+                if (editHistory.size == 0) Text("No edits have been recorded for this document yet.")
+                else LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    itemsIndexed(editHistory.entries().reversed()) { reverseIndex, entry ->
+                        val index = editHistory.size - reverseIndex
+                        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("$index. ${entry.label}", fontWeight = FontWeight.SemiBold)
+                                Text("PDF snapshot", color = Color.Gray, fontSize = 11.sp)
+                            }
+                            Text(if (index <= editHistory.currentEntryIndex) "Applied" else "Redo", color = Color.Gray, fontSize = 11.sp)
+                        }
+                        HorizontalDivider()
+                    }
+                }
+                Text("Undo and redo restore immutable PDF snapshots. Clearing history deletes temporary snapshots, not the current document.", color = Color.Gray, fontSize = 11.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = { showHistoryDialog = false }) { Text("Close") } },
+        dismissButton = { TextButton(onClick = {
+            val currentDraft = activeUri?.takeIf { it.scheme == "file" }?.path?.let(::File)
+            editHistory.clear(currentDraft?.let { setOf(it) } ?: emptySet())
+            historyRevision++
+            showHistoryDialog = false
+            message = "Editing history cleared. Current PDF remains open."
+        }, enabled = !busy) { Text("Clear history") } }
+    )
+
     if (showTextDialog) AlertDialog(
         onDismissRequest = { showTextDialog = false },
         title = { Text("Add text to first page") },
@@ -761,6 +841,62 @@ private fun PdfHome() {
         dismissButton = { TextButton(onClick = { showFormDialog = false }) { Text("Close") } }
     )
 
+    if (showAnnotationDialog) AlertDialog(
+        onDismissRequest = { showAnnotationDialog = false },
+        title = { Text("Move or resize annotation") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    val selectedAnnotation = annotationItems.getOrNull(annotationIndex)
+                    OutlinedTextField(
+                        value = selectedAnnotation?.let { "${it.subtype}: ${it.contents.ifBlank { "Annotation ${it.index + 1}" }}" } ?: "",
+                        onValueChange = {}, readOnly = true, label = { Text("Page 1 annotation") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        annotationItems.forEachIndexed { index, item ->
+                            DropdownMenuItem(
+                                text = { Text("${item.subtype}: ${item.contents.ifBlank { "Annotation ${item.index + 1}" }}") },
+                                onClick = {
+                                    annotationIndex = index
+                                    annotationX = item.x.toString()
+                                    annotationY = item.y.toString()
+                                    annotationWidth = item.width.toString()
+                                    annotationHeight = item.height.toString()
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(value = annotationX, onValueChange = { annotationX = it }, label = { Text("X (PDF points)") }, singleLine = true)
+                OutlinedTextField(value = annotationY, onValueChange = { annotationY = it }, label = { Text("Y (PDF points)") }, singleLine = true)
+                OutlinedTextField(value = annotationWidth, onValueChange = { annotationWidth = it }, label = { Text("Width (points)") }, singleLine = true)
+                OutlinedTextField(value = annotationHeight, onValueChange = { annotationHeight = it }, label = { Text("Height (points)") }, singleLine = true)
+                Text("Coordinates are measured from the PDF page's lower-left corner. Read-only annotations cannot be changed.", color = Color.Gray, fontSize = 11.sp)
+            }
+        },
+        confirmButton = {
+            val selected = annotationItems.getOrNull(annotationIndex)
+            TextButton(enabled = selected != null && !selected.readOnly &&
+                listOf(annotationX, annotationY, annotationWidth, annotationHeight).all { it.toFloatOrNull()?.isFinite() == true } &&
+                (annotationWidth.toFloatOrNull() ?: 0f) > 0f && (annotationHeight.toFloatOrNull() ?: 0f) > 0f,
+                onClick = {
+                    showAnnotationDialog = false
+                    activeUri?.let { documentUri ->
+                        runOperation("Updating annotation") {
+                            engine.transformAnnotation(documentUri, 0, selected!!.index,
+                                annotationX.toFloat(), annotationY.toFloat(), annotationWidth.toFloat(), annotationHeight.toFloat())
+                        }
+                    }
+                }
+            ) { Text("Apply position") }
+        },
+        dismissButton = { TextButton(onClick = { showAnnotationDialog = false }) { Text("Cancel") } }
+    )
+
     if (showSignatureDialog) AlertDialog(
         onDismissRequest = { showSignatureDialog = false },
         title = { Text("Add typed signature") },
@@ -808,7 +944,14 @@ private fun PdfPagePreview(uri: Uri, pageIndex: Int, maxDimension: Int, modifier
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(uri, pageIndex, maxDimension) {
         bitmap = withContext(Dispatchers.IO) {
-            val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: error("Cannot open PDF.")
+            val descriptor = if (uri.scheme == "file") {
+                android.os.ParcelFileDescriptor.open(
+                    File(uri.path ?: error("Invalid draft PDF path.")),
+                    android.os.ParcelFileDescriptor.MODE_READ_ONLY
+                )
+            } else {
+                context.contentResolver.openFileDescriptor(uri, "r")
+            } ?: error("Cannot open PDF.")
             descriptor.use { pfd ->
                 android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
                     require(pageIndex in 0 until renderer.pageCount) { "Page not found." }

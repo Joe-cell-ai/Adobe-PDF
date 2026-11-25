@@ -11,6 +11,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.google.android.gms.tasks.Tasks
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -30,9 +31,30 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
 
+/** Capability report for AcroForm/XFA documents. XFA packets are detected and preserved, not interpreted. */
+data class PdfFormFieldInfo(val name: String, val type: String, val value: String, val readOnly: Boolean, val required: Boolean)
+data class PdfFormCapabilities(val hasAcroForm: Boolean, val hasXfaPacket: Boolean, val fields: List<PdfFormFieldInfo>)
+data class PdfAnnotationInfo(val index: Int, val subtype: String, val contents: String, val x: Float, val y: Float, val width: Float, val height: Float, val readOnly: Boolean)
+
+/** Reopen a document and inspect its interactive form fields without mutating it. */
+/** Reopen verification result for a saved PDF draft. */
+data class PdfSaveVerification(val byteCount: Long, val pageCount: Int, val formFieldCount: Int, val signatureCount: Int)
+
 /** Local-only PDF operations using Android's Storage Access Framework. */
 class PdfEngine(private val context: Context) {
     init { PDFBoxResourceLoader.init(context) }
+
+    fun inspectForm(uri: Uri): PdfFormCapabilities {
+        val document = openDocument(uri)
+        try {
+            val form = document.documentCatalog.acroForm ?: return PdfFormCapabilities(false, false, emptyList())
+            val fields = form.fields.mapNotNull { field ->
+                val name = field.fullyQualifiedName ?: return@mapNotNull null
+                PdfFormFieldInfo(name, field.fieldType ?: "Unknown", field.valueAsString ?: "", field.isReadOnly, field.isRequired)
+            }.sortedBy { it.name }
+            return PdfFormCapabilities(true, form.cosObject.containsKey(COSName.XFA), fields)
+        } finally { document.close() }
+    }
 
     fun merge(uris: List<Uri>): File {
         require(uris.size >= 2) { "Choose at least two PDF files to merge." }
@@ -189,9 +211,37 @@ class PdfEngine(private val context: Context) {
     }
 
     private fun saveEdited(document: PDDocument, prefix: String): File {
+        val expectedPages = document.numberOfPages
         val output = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.pdf")
         document.save(output)
+        verifySavedPdf(output, expectedPages)
         return output
+    }
+
+    /** Reopen generated output before allowing it into the chained-edit workflow. */
+    fun verifySavedPdf(file: File, expectedPageCount: Int? = null): PdfSaveVerification {
+        require(file.isFile && file.length() > 0L) { "The saved PDF is missing or empty." }
+        val reopened = PDDocument.load(file)
+        try {
+            val pages = reopened.numberOfPages
+            require(pages > 0) { "The saved PDF contains no pages." }
+            if (expectedPageCount != null) require(pages == expectedPageCount) {
+                "Save verification failed: expected $expectedPageCount pages but reopened $pages."
+            }
+            val fields = reopened.documentCatalog.acroForm?.fields?.size ?: 0
+            val signatures = reopened.signatureDictionaries.size
+            return PdfSaveVerification(file.length(), pages, fields, signatures)
+        } finally { reopened.close() }
+    }
+
+    fun verifySavedUri(uri: Uri, expectedPageCount: Int? = null): PdfSaveVerification {
+        val input = if (uri.scheme == "file") File(uri.path ?: error("Invalid PDF path.")).inputStream()
+            else context.contentResolver.openInputStream(uri) ?: error("Cannot reopen the saved PDF.")
+        val temp = File(context.cacheDir, "verify_${System.nanoTime()}.pdf")
+        try {
+            input.use { source -> FileOutputStream(temp).use { target -> source.copyTo(target) } }
+            return verifySavedPdf(temp, expectedPageCount)
+        } finally { temp.delete() }
     }
 
 
@@ -693,6 +743,36 @@ class PdfEngine(private val context: Context) {
         } finally { document.close() }
     }
 
+    /** List annotations and their page-space rectangles for selection/editing tools. */
+    fun listPageAnnotations(uri: Uri, pageIndex: Int): List<PdfAnnotationInfo> {
+        val document = openDocument(uri)
+        try {
+            PdfEditorValidation.requirePageIndex(pageIndex, document.numberOfPages)
+            return document.getPage(pageIndex).annotations.mapIndexed { index, annotation ->
+                val rect = annotation.rectangle
+                PdfAnnotationInfo(index, annotation.subtype ?: "Unknown", annotation.contents ?: "",
+                    rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height, annotation.isReadOnly)
+            }
+        } finally { document.close() }
+    }
+
+    /** Move or resize an existing annotation in PDF points; content objects are not flattened. */
+    fun transformAnnotation(uri: Uri, pageIndex: Int, annotationIndex: Int, x: Float, y: Float, width: Float, height: Float): File {
+        require(listOf(x, y, width, height).all { it.isFinite() }) { "Invalid annotation geometry." }
+        require(width > 0f && height > 0f) { "Annotation size must be positive." }
+        val document = openDocument(uri)
+        try {
+            PdfEditorValidation.requirePageIndex(pageIndex, document.numberOfPages)
+            val page = document.getPage(pageIndex)
+            val annotation = page.annotations.getOrNull(annotationIndex) ?: error("Annotation not found.")
+            require(!annotation.isReadOnly) { "This annotation is read-only." }
+            require(x >= 0f && y >= 0f && x + width <= page.mediaBox.width && y + height <= page.mediaBox.height) {
+                "Annotation must remain inside the page bounds."
+            }
+            annotation.rectangle = PDRectangle(x, y, width, height)
+            return saveEdited(document, "annotation_edit")
+        } finally { document.close() }
+    }
     fun pageCount(uri: Uri): Int {
         val input = if (uri.scheme == "file") {
             File(uri.path ?: error("Invalid draft PDF path.")).inputStream()
@@ -728,6 +808,21 @@ class PdfEngine(private val context: Context) {
         return input.use { PDDocument.load(it) }
     }
 
+    /** Save a PDF to the user-selected destination and verify the actual stored bytes. */
+    fun savePdfToUri(source: File, resolver: ContentResolver, target: Uri): PdfSaveVerification {
+        val sourceVerification = verifySavedPdf(source)
+        source.inputStream().use { input ->
+            resolver.openOutputStream(target)?.use { output -> input.copyTo(output) }
+                ?: error("Cannot write to the selected destination.")
+        }
+        val savedVerification = verifySavedUri(target, sourceVerification.pageCount)
+        require(savedVerification.byteCount == sourceVerification.byteCount) {
+            "Save verification failed: destination size does not match the edited PDF."
+        }
+        return savedVerification
+    }
+
+    /** Generic copy for non-PDF exports such as ZIP archives. */
     fun saveToUri(source: File, resolver: ContentResolver, target: Uri) {
         source.inputStream().use { input ->
             resolver.openOutputStream(target)?.use { output -> input.copyTo(output) }
