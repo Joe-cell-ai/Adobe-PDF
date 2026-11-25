@@ -808,6 +808,21 @@ class PdfEngine(private val context: Context) {
         return input.use { PDDocument.load(it) }
     }
 
+    /** Save a PDF to the user-selected destination and verify the actual stored bytes. */
+    fun savePdfToUri(source: File, resolver: ContentResolver, target: Uri): PdfSaveVerification {
+        val sourceVerification = verifySavedPdf(source)
+        source.inputStream().use { input ->
+            resolver.openOutputStream(target)?.use { output -> input.copyTo(output) }
+                ?: error("Cannot write to the selected destination.")
+        }
+        val savedVerification = verifySavedUri(target, sourceVerification.pageCount)
+        require(savedVerification.byteCount == sourceVerification.byteCount) {
+            "Save verification failed: destination size does not match the edited PDF."
+        }
+        return savedVerification
+    }
+
+    /** Generic copy for non-PDF exports such as ZIP archives. */
     fun saveToUri(source: File, resolver: ContentResolver, target: Uri) {
         source.inputStream().use { input ->
             resolver.openOutputStream(target)?.use { output -> input.copyTo(output) }
